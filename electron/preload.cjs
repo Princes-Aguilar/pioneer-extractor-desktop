@@ -1,6 +1,6 @@
-const { contextBridge } = require("electron");
+const { contextBridge, ipcRenderer } = require("electron");
 
-// Placeholder for future native functions (file system, dialogs, etc.)
 contextBridge.exposeInMainWorld("pioneer", {
-  version: () => "0.0.1",
+  openPdfDialog: () => ipcRenderer.invoke("dialog:openPdf"),
+  extractPdf: (filePath) => ipcRenderer.invoke("pdf:extract", filePath),
 });

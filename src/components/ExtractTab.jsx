@@ -1,139 +1,203 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useState } from "react";
 
 export default function ExtractTab({ store, actions }) {
-  const [isDragging, setIsDragging] = useState(false);
+  const [isWorking, setIsWorking] = useState(false);
+  const [error, setError] = useState("");
 
-  const onDrop = useCallback(
-    (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(false);
+  const pickWithDialog = async () => {
+    try {
+      setError("");
 
-      const file = e.dataTransfer.files?.[0];
-      if (file) actions.setSelectedFile(file);
-    },
-    [actions],
-  );
+      if (!window.pioneer?.openPdfDialog) {
+        throw new Error(
+          "window.pioneer.openPdfDialog is not available. Check preload.cjs.",
+        );
+      }
 
-  const onPick = useCallback(
-    (e) => {
-      const file = e.target.files?.[0];
-      if (file) actions.setSelectedFile(file);
-      e.target.value = ""; // allow picking same file again
-    },
-    [actions],
-  );
+      const filePath = await window.pioneer.openPdfDialog();
+      if (!filePath) return;
 
-  const hint = useMemo(() => {
-    if (!store.selectedFile)
-      return "Drag & drop a file here, or choose a file.";
-    return `Selected: ${store.selectedFile.name} (${formatBytes(
-      store.selectedFile.size,
-    )})`;
-  }, [store.selectedFile]);
+      actions.setSelectedFile({
+        name: filePath.split(/[/\\]/).pop(),
+        path: filePath,
+      });
+    } catch (e) {
+      console.error("Pick dialog error:", e);
+      setError(e?.message || "Failed to open file dialog.");
+    }
+  };
+
+  const submitAndExtract = async () => {
+    try {
+      setError("");
+      setIsWorking(true);
+      await actions.extractSelectedPdf();
+    } catch (e) {
+      console.error("Extraction error:", e);
+      setError(e?.message || "Unknown extraction error.");
+    } finally {
+      setIsWorking(false);
+    }
+  };
 
   return (
     <div>
       <h3 style={styles.h3}>Extract</h3>
       <p style={styles.p}>
-        This is only the skeleton. Later we’ll add the real extraction logic.
+        Choose a PDF → Submit (Extract) → Review → Proceed (Save)
       </p>
 
-      <div
-        onDragEnter={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDragging(true);
-        }}
-        onDragOver={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        }}
-        onDragLeave={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDragging(false);
-        }}
-        onDrop={onDrop}
-        style={{
-          ...styles.dropzone,
-          borderColor: isDragging ? "#ffffff" : "#2b2b2b",
-          background: isDragging ? "#1a1a1a" : "#0f0f0f",
-        }}
-      >
-        <div style={styles.dropInner}>
-          <div style={styles.dropTitle}>Drop File</div>
-          <div style={styles.dropHint}>{hint}</div>
-
-          <label style={styles.fileBtn}>
-            Choose file
-            <input type="file" onChange={onPick} style={{ display: "none" }} />
-          </label>
+      <div style={styles.box}>
+        <div style={styles.fileName}>
+          {store.selectedFile ? (
+            <>
+              Selected: <b>{store.selectedFile.name}</b>
+            </>
+          ) : (
+            "No file selected"
+          )}
         </div>
+
+        <button style={styles.ghostBtn} onClick={pickWithDialog}>
+          Choose PDF
+        </button>
       </div>
 
-      <div style={styles.actions}>
+      {error ? <div style={styles.error}>{error}</div> : null}
+
+      <div style={{ marginTop: 16 }}>
         <button
           style={{
             ...styles.primaryBtn,
-            opacity: store.selectedFile ? 1 : 0.4,
-            cursor: store.selectedFile ? "pointer" : "not-allowed",
+            opacity: store.selectedFile && !isWorking ? 1 : 0.4,
+            cursor:
+              store.selectedFile && !isWorking ? "pointer" : "not-allowed",
           }}
-          onClick={actions.submitExtraction}
-          disabled={!store.selectedFile}
+          disabled={!store.selectedFile || isWorking}
+          onClick={submitAndExtract}
         >
-          Submit
+          {isWorking ? "Extracting..." : "Submit (Extract)"}
         </button>
-
-        <div style={styles.note}>
-          On submit: it will “save” the file record into “All Pioneer Items”.
-        </div>
       </div>
+
+      {store.extractedPreview ? (
+        <div style={styles.review}>
+          <div style={styles.reviewTop}>
+            <div>
+              <div style={styles.reviewTitle}>Review Extracted Data</div>
+              <div style={styles.reviewSub}>
+                File: <b>{store.extractedPreview.fileName}</b>{" "}
+                <span style={{ color: "#bdbdbd" }}>
+                  (text length: {store.extractedPreview.rawTextLength})
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button style={styles.ghostBtn} onClick={actions.clearPreview}>
+                Clear
+              </button>
+              <button
+                style={styles.primaryBtn}
+                onClick={actions.proceedSaveExtracted}
+              >
+                Proceed (Save)
+              </button>
+            </div>
+          </div>
+
+          <div style={{ overflowX: "auto" }}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th>Description</th>
+                  <th>QTY</th>
+                  <th>No. of boxes</th>
+                  <th>Net weight</th>
+                  <th>Gross weight</th>
+                </tr>
+              </thead>
+              <tbody>
+                {store.extractedPreview.items?.length ? (
+                  store.extractedPreview.items.map((r, idx) => (
+                    <tr key={idx}>
+                      <td>{r.description}</td>
+                      <td>{r.qty ?? "—"}</td>
+                      <td>{r.noOfBoxes ?? "—"}</td>
+                      <td>{r.netWeight ?? "—"}</td>
+                      <td>{r.grossWeight ?? "—"}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="5" style={{ color: "#bdbdbd" }}>
+                      No item rows detected. If text length is 0, the PDF is
+                      likely scanned and needs OCR.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
-}
-
-function formatBytes(bytes) {
-  const units = ["B", "KB", "MB", "GB"];
-  let v = bytes;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
 const styles = {
   h3: { margin: "0 0 6px 0", fontSize: 20 },
   p: { margin: "0 0 14px 0", color: "#bdbdbd" },
-  dropzone: {
-    border: "2px dashed #2b2b2b",
-    borderRadius: 16,
-    padding: 18,
-    transition: "150ms ease",
-    userSelect: "none",
-  },
-  dropInner: { textAlign: "center", padding: "26px 10px" },
-  dropTitle: { fontSize: 18, fontWeight: 800, marginBottom: 6 },
-  dropHint: { color: "#bdbdbd", marginBottom: 14, lineHeight: 1.4 },
-  fileBtn: {
-    display: "inline-block",
-    padding: "10px 12px",
-    borderRadius: 12,
+  box: {
+    padding: 16,
     border: "1px solid #2b2b2b",
-    cursor: "pointer",
-    background: "#121212",
-  },
-  actions: { marginTop: 16, display: "grid", gap: 10 },
-  primaryBtn: {
-    width: 160,
-    padding: "11px 14px",
     borderRadius: 12,
+    background: "#111",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+  fileName: { color: "#fff" },
+  ghostBtn: {
+    padding: "9px 12px",
+    border: "1px solid #2b2b2b",
+    background: "transparent",
+    color: "#fff",
+    borderRadius: 10,
+    cursor: "pointer",
+  },
+  primaryBtn: {
+    padding: "10px 14px",
     border: "1px solid #fff",
     background: "#fff",
-    color: "#0b0b0b",
-    fontWeight: 800,
+    color: "#000",
+    borderRadius: 10,
+    fontWeight: 700,
   },
-  note: { color: "#bdbdbd" },
+  error: {
+    marginTop: 12,
+    padding: 10,
+    background: "#2a1010",
+    border: "1px solid #5a1a1a",
+    borderRadius: 10,
+    color: "#ffaaaa",
+  },
+  review: {
+    marginTop: 20,
+    padding: 16,
+    border: "1px solid #2b2b2b",
+    borderRadius: 12,
+    background: "#0f0f0f",
+  },
+  reviewTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
+  },
+  reviewTitle: { fontSize: 16, fontWeight: 900 },
+  reviewSub: { marginTop: 6, color: "#eaeaea" },
+  table: { width: "100%", borderCollapse: "collapse" },
 };
