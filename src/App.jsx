@@ -19,10 +19,26 @@ export default function App() {
 
       setSelectedFile: (file) => setSelectedFile(file),
 
-      // ✅ Add this so ExtractTab.jsx can call it
+      // ✅ used by ExtractTab.jsx
       setExtractedPreview: (preview) => setExtractedPreview(preview),
 
       clearPreview: () => setExtractedPreview(null),
+
+      // ✅ NEW: used by AllPioneerTab.jsx (Edit → Save)
+      updateSavedItemRow: ({ recordId, itemIndex, patch }) => {
+        setSavedItems((prev) =>
+          prev.map((rec) => {
+            if (rec.id !== recordId) return rec;
+
+            const nextItems = (rec.extractedItems || []).map((it, idx) => {
+              if (idx !== itemIndex) return it;
+              return { ...it, ...patch };
+            });
+
+            return { ...rec, extractedItems: nextItems };
+          }),
+        );
+      },
 
       // Keep if you still want XLSX route (optional)
       extractSelectedXlsx: async () => {
