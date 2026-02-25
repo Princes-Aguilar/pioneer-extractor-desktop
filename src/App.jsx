@@ -19,12 +19,12 @@ export default function App() {
 
       setSelectedFile: (file) => setSelectedFile(file),
 
-      // ✅ used by ExtractTab.jsx
+      // used by ExtractTab.jsx
       setExtractedPreview: (preview) => setExtractedPreview(preview),
 
       clearPreview: () => setExtractedPreview(null),
 
-      // ✅ NEW: used by AllPioneerTab.jsx (Edit → Save)
+      // used by AllPioneerTab.jsx (Edit → Save)
       updateSavedItemRow: ({ recordId, itemIndex, patch }) => {
         setSavedItems((prev) =>
           prev.map((rec) => {
@@ -40,7 +40,7 @@ export default function App() {
         );
       },
 
-      // Keep if you still want XLSX route (optional)
+      // Optional: if you still use XLSX
       extractSelectedXlsx: async () => {
         if (!selectedFile) throw new Error("No file selected.");
 
@@ -89,7 +89,6 @@ export default function App() {
           );
         }
 
-        // ✅ Normalize what we store (no 'ok' field)
         setExtractedPreview({
           fileName: result.fileName,
           items: result.items || [],
@@ -99,14 +98,36 @@ export default function App() {
         });
       },
 
+      // ✅ IMPORTANT: when saving, automatically add extra DG columns to every item
       proceedSaveExtracted: () => {
         if (!extractedPreview) return;
+
+        const defaultDGFields = {
+          hsCode: "",
+          dgStatus: "", // DG / Non-DG
+          unNumber: "",
+          classNumber: "",
+          packingGroup: "",
+          flashPoint: "",
+          properShippingName: "",
+          technicalName: "",
+          ems: "",
+          marinePollutant: "", // Yes / No
+          innerType: "",
+          outerType: "",
+        };
+
+        // Add the DG fields to every extracted item if not present yet
+        const normalizedItems = (extractedPreview.items || []).map((it) => ({
+          ...defaultDGFields,
+          ...it,
+        }));
 
         const record = {
           id: crypto.randomUUID(),
           fileName: extractedPreview.fileName,
           addedAt: new Date().toISOString(),
-          extractedItems: extractedPreview.items || [],
+          extractedItems: normalizedItems,
           numberOfItemsExtracted:
             extractedPreview.numberOfItemsExtracted ??
             (extractedPreview.items?.length || 0),

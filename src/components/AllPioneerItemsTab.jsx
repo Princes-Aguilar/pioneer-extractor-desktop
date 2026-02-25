@@ -20,6 +20,18 @@ export default function AllPioneerTab({ store, actions }) {
           netWeight: it.netWeight ?? "",
           grossWeight: it.grossWeight ?? "",
           fileName: it.fileName ?? rec.fileName ?? "",
+          hsCode: it.hsCode ?? "",
+          dgStatus: it.dgStatus ?? "",
+          unNumber: it.unNumber ?? "",
+          classNumber: it.classNumber ?? "",
+          packingGroup: it.packingGroup ?? "",
+          flashPoint: it.flashPoint ?? "",
+          properShippingName: it.properShippingName ?? "",
+          technicalName: it.technicalName ?? "",
+          ems: it.ems ?? "",
+          marinePollutant: it.marinePollutant ?? "",
+          innerType: it.innerType ?? "",
+          outerType: it.outerType ?? "",
         });
       }
     }
@@ -50,6 +62,18 @@ export default function AllPioneerTab({ store, actions }) {
         grossWeight:
           draft.grossWeight === "" ? null : Number(draft.grossWeight),
         fileName: String(draft.fileName ?? "").trim(),
+        hsCode: String(draft.hsCode ?? "").trim(),
+        dgStatus: String(draft.dgStatus ?? "").trim(),
+        unNumber: String(draft.unNumber ?? "").trim(),
+        classNumber: String(draft.classNumber ?? "").trim(),
+        packingGroup: String(draft.packingGroup ?? "").trim(),
+        flashPoint: String(draft.flashPoint ?? "").trim(),
+        properShippingName: String(draft.properShippingName ?? "").trim(),
+        technicalName: String(draft.technicalName ?? "").trim(),
+        ems: String(draft.ems ?? "").trim(),
+        marinePollutant: String(draft.marinePollutant ?? "").trim(),
+        innerType: String(draft.innerType ?? "").trim(),
+        outerType: String(draft.outerType ?? "").trim(),
       },
     });
 
@@ -79,6 +103,18 @@ export default function AllPioneerTab({ store, actions }) {
                 <th style={styles.th}>Net Wt</th>
                 <th style={styles.th}>Gross Wt</th>
                 <th style={styles.th}>File Name</th>
+                <th style={styles.th}>HS Code</th>
+                <th style={styles.th}>DG/Non-DG</th>
+                <th style={styles.th}>UN No.</th>
+                <th style={styles.th}>Class</th>
+                <th style={styles.th}>Packing Group</th>
+                <th style={styles.th}>Flash Point</th>
+                <th style={styles.th}>Proper Shipping Name</th>
+                <th style={styles.th}>Technical Name</th>
+                <th style={styles.th}>EMS</th>
+                <th style={styles.th}>Marine Pollutant</th>
+                <th style={styles.th}>Inner Type</th>
+                <th style={styles.th}>Outer Type</th>
                 <th style={styles.th}></th>
               </tr>
             </thead>
@@ -183,6 +219,197 @@ export default function AllPioneerTab({ store, actions }) {
                           />
                         ) : (
                           r.fileName
+                        )}
+                      </td>
+
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input
+                            style={styles.input}
+                            value={draft.hsCode}
+                            onChange={(e) =>
+                              setDraft({ ...draft, hsCode: e.target.value })
+                            }
+                          />
+                        ) : (
+                          r.hsCode
+                        )}
+                      </td>
+
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <select
+                            style={styles.input}
+                            value={draft.dgStatus}
+                            onChange={(e) =>
+                              setDraft({ ...draft, dgStatus: e.target.value })
+                            }
+                          >
+                            <option value="">--</option>
+                            <option value="DG">DG</option>
+                            <option value="Non-DG">Non-DG</option>
+                          </select>
+                        ) : (
+                          r.dgStatus
+                        )}
+                      </td>
+
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input
+                            style={styles.input}
+                            value={draft.unNumber}
+                            onChange={(e) =>
+                              setDraft({ ...draft, unNumber: e.target.value })
+                            }
+                          />
+                        ) : (
+                          r.unNumber
+                        )}
+                      </td>
+
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input
+                            style={styles.input}
+                            value={draft.classNumber}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                classNumber: e.target.value,
+                              })
+                            }
+                          />
+                        ) : (
+                          r.classNumber
+                        )}
+                      </td>
+
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input
+                            style={styles.input}
+                            value={draft.packingGroup}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                packingGroup: e.target.value,
+                              })
+                            }
+                          />
+                        ) : (
+                          r.packingGroup
+                        )}
+                      </td>
+
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input
+                            style={styles.input}
+                            value={draft.flashPoint}
+                            onChange={(e) =>
+                              setDraft({ ...draft, flashPoint: e.target.value })
+                            }
+                          />
+                        ) : (
+                          r.flashPoint
+                        )}
+                      </td>
+
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input
+                            style={styles.inputWide}
+                            value={draft.properShippingName}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                properShippingName: e.target.value,
+                              })
+                            }
+                          />
+                        ) : (
+                          r.properShippingName
+                        )}
+                      </td>
+
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input
+                            style={styles.inputWide}
+                            value={draft.technicalName}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                technicalName: e.target.value,
+                              })
+                            }
+                          />
+                        ) : (
+                          r.technicalName
+                        )}
+                      </td>
+
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input
+                            style={styles.input}
+                            value={draft.ems}
+                            onChange={(e) =>
+                              setDraft({ ...draft, ems: e.target.value })
+                            }
+                          />
+                        ) : (
+                          r.ems
+                        )}
+                      </td>
+
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <select
+                            style={styles.input}
+                            value={draft.marinePollutant}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                marinePollutant: e.target.value,
+                              })
+                            }
+                          >
+                            <option value="">--</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                          </select>
+                        ) : (
+                          r.marinePollutant
+                        )}
+                      </td>
+
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input
+                            style={styles.input}
+                            value={draft.innerType}
+                            onChange={(e) =>
+                              setDraft({ ...draft, innerType: e.target.value })
+                            }
+                          />
+                        ) : (
+                          r.innerType
+                        )}
+                      </td>
+
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input
+                            style={styles.input}
+                            value={draft.outerType}
+                            onChange={(e) =>
+                              setDraft({ ...draft, outerType: e.target.value })
+                            }
+                          />
+                        ) : (
+                          r.outerType
                         )}
                       </td>
 
