@@ -7,13 +7,6 @@ export default function ExtractTab({ store, actions }) {
   const pickWithDialog = async () => {
     try {
       setError("");
-
-      if (!window.pioneer?.openPdfDialog) {
-        throw new Error(
-          "window.pioneer.openPdfDialog is not available. Check preload.cjs.",
-        );
-      }
-
       const filePath = await window.pioneer.openPdfDialog();
       if (!filePath) return;
 
@@ -22,8 +15,7 @@ export default function ExtractTab({ store, actions }) {
         path: filePath,
       });
     } catch (e) {
-      console.error("Pick dialog error:", e);
-      setError(e?.message || "Failed to open file dialog.");
+      setError(e?.message || String(e));
     }
   };
 
@@ -31,64 +23,92 @@ export default function ExtractTab({ store, actions }) {
     try {
       setError("");
       setIsWorking(true);
-      await actions.extractSelectedPdf();
+
+      const f = store.selectedFile;
+      if (!f?.path)
+        throw new Error("No PDF selected. Click 'Choose PDF' first.");
+
+      if (!window.pioneer?.extractPdf) {
+        throw new Error(
+          "window.pioneer.extractPdf is missing. Check preload.cjs.",
+        );
+      }
+
+      const res = await window.pioneer.extractPdf(f.path);
+      if (!res?.ok) throw new Error(res?.error || "Extraction failed.");
+
+      if (typeof actions.setExtractedPreview !== "function") {
+        throw new Error(
+          "actions.setExtractedPreview is not a function. Add it inside App.jsx actions.",
+        );
+      }
+
+      actions.setExtractedPreview({
+        fileName: res.fileName,
+        numberOfItemsExtracted: res.numberOfItemsExtracted,
+        items: res.items || [],
+        debug: res.debug,
+      });
     } catch (e) {
-      console.error("Extraction error:", e);
-      setError(e?.message || "Unknown extraction error.");
+      setError(e?.message || String(e));
     } finally {
       setIsWorking(false);
     }
   };
 
   return (
-    <div>
-      <h3 style={styles.h3}>Extract</h3>
-      <p style={styles.p}>
-        Choose a PDF → Submit (Extract) → Review → Proceed (Save)
-      </p>
-
-      <div style={styles.box}>
-        <div style={styles.fileName}>
-          {store.selectedFile ? (
-            <>
-              Selected: <b>{store.selectedFile.name}</b>
-            </>
-          ) : (
-            "No file selected"
-          )}
+    <div style={styles.wrap}>
+      <div style={styles.head}>
+        <div>
+          <h2 style={styles.h2}>Extract</h2>
+          <p style={styles.p}>
+            Choose a packing list PDF, extract item rows, review, then proceed.
+          </p>
         </div>
-
         <button style={styles.ghostBtn} onClick={pickWithDialog}>
           Choose PDF
         </button>
       </div>
 
-      {error ? <div style={styles.error}>{error}</div> : null}
+      <div style={styles.card}>
+        <div style={styles.row}>
+          <div style={styles.label}>Selected file</div>
+          <div style={styles.value}>
+            {store.selectedFile?.name ? (
+              <b>{store.selectedFile.name}</b>
+            ) : (
+              <span style={{ color: "#bdbdbd" }}>None</span>
+            )}
+          </div>
+        </div>
 
-      <div style={{ marginTop: 16 }}>
         <button
           style={{
             ...styles.primaryBtn,
-            opacity: store.selectedFile && !isWorking ? 1 : 0.4,
+            opacity: store.selectedFile?.path && !isWorking ? 1 : 0.45,
             cursor:
-              store.selectedFile && !isWorking ? "pointer" : "not-allowed",
+              store.selectedFile?.path && !isWorking
+                ? "pointer"
+                : "not-allowed",
           }}
-          disabled={!store.selectedFile || isWorking}
+          disabled={!store.selectedFile?.path || isWorking}
           onClick={submitAndExtract}
         >
           {isWorking ? "Extracting..." : "Submit (Extract)"}
         </button>
+
+        {error ? <div style={styles.errorBox}>{error}</div> : null}
       </div>
 
       {store.extractedPreview ? (
-        <div style={styles.review}>
+        <div style={styles.reviewCard}>
           <div style={styles.reviewTop}>
             <div>
               <div style={styles.reviewTitle}>Review Extracted Data</div>
               <div style={styles.reviewSub}>
                 File: <b>{store.extractedPreview.fileName}</b>{" "}
                 <span style={{ color: "#bdbdbd" }}>
-                  (text length: {store.extractedPreview.rawTextLength})
+                  (items: {store.extractedPreview.numberOfItemsExtracted ?? 0})
                 </span>
               </div>
             </div>
@@ -110,35 +130,45 @@ export default function ExtractTab({ store, actions }) {
             <table style={styles.table}>
               <thead>
                 <tr>
-                  <th>Description</th>
-                  <th>QTY</th>
-                  <th>No. of boxes</th>
-                  <th>Net weight</th>
-                  <th>Gross weight</th>
+                  <th style={styles.th}>Description</th>
+                  <th style={styles.th}>Qty</th>
+                  <th style={styles.th}>Boxes</th>
+                  <th style={styles.th}>Net Weight</th>
+                  <th style={styles.th}>Gross Weight</th>
+                  <th style={styles.th}>File Name</th>
                 </tr>
               </thead>
               <tbody>
                 {store.extractedPreview.items?.length ? (
                   store.extractedPreview.items.map((r, idx) => (
                     <tr key={idx}>
-                      <td>{r.description}</td>
-                      <td>{r.qty ?? "—"}</td>
-                      <td>{r.noOfBoxes ?? "—"}</td>
-                      <td>{r.netWeight ?? "—"}</td>
-                      <td>{r.grossWeight ?? "—"}</td>
+                      <td style={styles.td}>{r.description}</td>
+                      <td style={styles.td}>{r.qty ?? "—"}</td>
+                      <td style={styles.td}>{r.noOfBoxes ?? "—"}</td>
+                      <td style={styles.td}>{r.netWeight ?? "—"}</td>
+                      <td style={styles.td}>{r.grossWeight ?? "—"}</td>
+                      <td style={styles.td}>
+                        {r.fileName ?? store.extractedPreview.fileName}
+                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="5" style={{ color: "#bdbdbd" }}>
-                      No item rows detected. If text length is 0, the PDF is
-                      likely scanned and needs OCR.
+                    <td style={styles.tdMuted} colSpan={6}>
+                      No rows extracted.
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
+
+          {store.extractedPreview.debug?.textLength ? (
+            <div style={styles.debug}>
+              Debug: extracted text length ={" "}
+              {store.extractedPreview.debug.textLength}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -146,19 +176,29 @@ export default function ExtractTab({ store, actions }) {
 }
 
 const styles = {
-  h3: { margin: "0 0 6px 0", fontSize: 20 },
-  p: { margin: "0 0 14px 0", color: "#bdbdbd" },
-  box: {
+  wrap: { display: "flex", flexDirection: "column", gap: 14 },
+  head: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  h2: { margin: 0, fontSize: 22 },
+  p: { margin: "6px 0 0 0", color: "#bdbdbd" },
+
+  card: {
     padding: 16,
     border: "1px solid #2b2b2b",
     borderRadius: 12,
-    background: "#111",
+    background: "#101010",
     display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flexDirection: "column",
     gap: 12,
   },
-  fileName: { color: "#fff" },
+  row: { display: "flex", justifyContent: "space-between", gap: 12 },
+  label: { color: "#bdbdbd" },
+  value: { color: "#fff" },
+
   ghostBtn: {
     padding: "9px 12px",
     border: "1px solid #2b2b2b",
@@ -173,18 +213,19 @@ const styles = {
     background: "#fff",
     color: "#000",
     borderRadius: 10,
-    fontWeight: 700,
+    fontWeight: 800,
   },
-  error: {
-    marginTop: 12,
+  errorBox: {
+    marginTop: 6,
     padding: 10,
     background: "#2a1010",
     border: "1px solid #5a1a1a",
     borderRadius: 10,
-    color: "#ffaaaa",
+    color: "#ffb3b3",
+    whiteSpace: "pre-wrap",
   },
-  review: {
-    marginTop: 20,
+
+  reviewCard: {
     padding: 16,
     border: "1px solid #2b2b2b",
     borderRadius: 12,
@@ -192,12 +233,28 @@ const styles = {
   },
   reviewTop: {
     display: "flex",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: 12,
     marginBottom: 12,
   },
   reviewTitle: { fontSize: 16, fontWeight: 900 },
   reviewSub: { marginTop: 6, color: "#eaeaea" },
+
   table: { width: "100%", borderCollapse: "collapse" },
+  th: {
+    textAlign: "left",
+    padding: "10px 8px",
+    borderBottom: "1px solid #2b2b2b",
+    color: "#bdbdbd",
+    fontWeight: 800,
+    fontSize: 12,
+  },
+  td: {
+    padding: "10px 8px",
+    borderBottom: "1px solid #1f1f1f",
+    verticalAlign: "top",
+  },
+  tdMuted: { padding: "12px 8px", color: "#bdbdbd" },
+  debug: { marginTop: 10, color: "#bdbdbd", fontSize: 12 },
 };

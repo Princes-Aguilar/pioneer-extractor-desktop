@@ -19,7 +19,35 @@ export default function App() {
 
       setSelectedFile: (file) => setSelectedFile(file),
 
+      // ✅ Add this so ExtractTab.jsx can call it
+      setExtractedPreview: (preview) => setExtractedPreview(preview),
+
       clearPreview: () => setExtractedPreview(null),
+
+      // Keep if you still want XLSX route (optional)
+      extractSelectedXlsx: async () => {
+        if (!selectedFile) throw new Error("No file selected.");
+
+        const filePath = selectedFile.path;
+        if (!filePath) {
+          throw new Error(
+            "Selected file has no path. Use the Choose XLSX button.",
+          );
+        }
+
+        const result = await window.pioneer.extractXlsx(filePath);
+        if (!result?.ok) {
+          throw new Error(result?.error || "XLSX extraction failed.");
+        }
+
+        setExtractedPreview({
+          fileName: result.fileName,
+          items: result.items || [],
+          numberOfItemsExtracted:
+            result.numberOfItemsExtracted ?? (result.items?.length || 0),
+          debug: result.debug,
+        });
+      },
 
       extractSelectedPdf: async () => {
         if (!selectedFile) throw new Error("No file selected.");
@@ -45,7 +73,14 @@ export default function App() {
           );
         }
 
-        setExtractedPreview(result);
+        // ✅ Normalize what we store (no 'ok' field)
+        setExtractedPreview({
+          fileName: result.fileName,
+          items: result.items || [],
+          numberOfItemsExtracted:
+            result.numberOfItemsExtracted ?? (result.items?.length || 0),
+          debug: result.debug,
+        });
       },
 
       proceedSaveExtracted: () => {
@@ -55,8 +90,10 @@ export default function App() {
           id: crypto.randomUUID(),
           fileName: extractedPreview.fileName,
           addedAt: new Date().toISOString(),
-          // Save the extracted rows
           extractedItems: extractedPreview.items || [],
+          numberOfItemsExtracted:
+            extractedPreview.numberOfItemsExtracted ??
+            (extractedPreview.items?.length || 0),
         };
 
         setSavedItems((prev) => [record, ...prev]);
