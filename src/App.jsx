@@ -40,6 +40,49 @@ export default function App() {
         );
       },
 
+      // + Add button (insert a blank row at TOP of FIRST record)
+      addSavedItemRowTop: () => {
+        setSavedItems((prev) => {
+          if (!prev.length) return prev;
+
+          const first = prev[0];
+
+          const defaultRow = {
+            description: "",
+            qty: null,
+            noOfBoxes: null,
+            netWeight: null,
+            grossWeight: null,
+            fileName: first.fileName || "",
+
+            // ✅ NEW: keep same PRO/SOI for new rows under this record
+            proNumber: first.proNumber || "",
+            soiNumber: first.soiNumber || "",
+
+            hsCode: "",
+            dgStatus: "",
+            unNumber: "",
+            classNumber: "",
+            packingGroup: "",
+            flashPoint: "",
+            properShippingName: "",
+            technicalName: "",
+            ems: "",
+            marinePollutant: "",
+            innerType: "",
+            outerType: "",
+          };
+
+          const updatedFirst = {
+            ...first,
+            extractedItems: [defaultRow, ...(first.extractedItems || [])],
+            numberOfItemsExtracted: (first.numberOfItemsExtracted || 0) + 1,
+          };
+
+          return [updatedFirst, ...prev.slice(1)];
+        });
+      },
+
       // Optional: if you still use XLSX
       extractSelectedXlsx: async () => {
         if (!selectedFile) throw new Error("No file selected.");
@@ -99,6 +142,7 @@ export default function App() {
       },
 
       // ✅ IMPORTANT: when saving, automatically add extra DG columns to every item
+      // ✅ ALSO IMPORTANT: persist PRO/SOI from extractedPreview into savedItems
       proceedSaveExtracted: () => {
         if (!extractedPreview) return;
 
@@ -117,16 +161,30 @@ export default function App() {
           outerType: "",
         };
 
-        // Add the DG fields to every extracted item if not present yet
+        // ✅ NEW: capture PRO/SOI once (from ExtractTab preview)
+        const proNumber = (extractedPreview.proNumber || "").trim();
+        const soiNumber = (extractedPreview.soiNumber || "").trim();
+
+        // Add DG + PRO/SOI fields to every extracted item if not present yet
         const normalizedItems = (extractedPreview.items || []).map((it) => ({
           ...defaultDGFields,
           ...it,
+          // ✅ ensure fileName exists
+          fileName: it.fileName ?? extractedPreview.fileName,
+          // ✅ ensure pro/soi exists on each row
+          proNumber: (it.proNumber ?? proNumber) || "",
+          soiNumber: (it.soiNumber ?? soiNumber) || "",
         }));
 
         const record = {
           id: crypto.randomUUID(),
           fileName: extractedPreview.fileName,
           addedAt: new Date().toISOString(),
+
+          // ✅ NEW: store also at record level (useful for defaults)
+          proNumber,
+          soiNumber,
+
           extractedItems: normalizedItems,
           numberOfItemsExtracted:
             extractedPreview.numberOfItemsExtracted ??

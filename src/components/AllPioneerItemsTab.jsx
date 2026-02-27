@@ -14,12 +14,19 @@ export default function AllPioneerTab({ store, actions }) {
           rowKey: `${rec.id}::${i}`, // stable unique key for editing
           recordId: rec.id,
           itemIndex: i,
+
           description: it.description ?? "",
           qty: it.qty ?? "",
           noOfBoxes: it.noOfBoxes ?? "",
           netWeight: it.netWeight ?? "",
           grossWeight: it.grossWeight ?? "",
+
           fileName: it.fileName ?? rec.fileName ?? "",
+
+          // ✅ NEW: PRO/SOI beside filename (prefer record-level, fallback to item-level)
+          proNumber: it.proNumber ?? rec.proNumber ?? "",
+          soiNumber: it.soiNumber ?? rec.soiNumber ?? "",
+
           hsCode: it.hsCode ?? "",
           dgStatus: it.dgStatus ?? "",
           unNumber: it.unNumber ?? "",
@@ -59,9 +66,14 @@ export default function AllPioneerTab({ store, actions }) {
         qty: draft.qty === "" ? null : Number(draft.qty),
         noOfBoxes: draft.noOfBoxes === "" ? null : Number(draft.noOfBoxes),
         netWeight: draft.netWeight === "" ? null : Number(draft.netWeight),
-        grossWeight:
-          draft.grossWeight === "" ? null : Number(draft.grossWeight),
+        grossWeight: draft.grossWeight === "" ? null : Number(draft.grossWeight),
+
         fileName: String(draft.fileName ?? "").trim(),
+
+        // ✅ NEW: Save editable PRO/SOI too
+        proNumber: String(draft.proNumber ?? "").trim(),
+        soiNumber: String(draft.soiNumber ?? "").trim(),
+
         hsCode: String(draft.hsCode ?? "").trim(),
         dgStatus: String(draft.dgStatus ?? "").trim(),
         unNumber: String(draft.unNumber ?? "").trim(),
@@ -81,15 +93,62 @@ export default function AllPioneerTab({ store, actions }) {
     setDraft(null);
   };
 
+  const handleAdd = () => {
+    if (!store.savedItems?.length) {
+      setError?.("No saved records yet. Extract and Save first.");
+      return;
+    }
+
+    // Add a row to the top of the latest record
+    actions.addSavedItemRowTop();
+
+    // Immediately open edit mode for that new top row:
+    const recordId = store.savedItems[0].id;
+    const rowKey = `${recordId}::0`;
+
+    setEditingKey(rowKey);
+
+    // draft should match your row shape (include recordId + itemIndex)
+    setDraft({
+      rowKey,
+      recordId,
+      itemIndex: 0,
+      description: "",
+      qty: "",
+      noOfBoxes: "",
+      netWeight: "",
+      grossWeight: "",
+      fileName: store.savedItems[0].fileName || "",
+
+      // ✅ NEW: include blank defaults
+      proNumber: store.savedItems[0].proNumber || "",
+      soiNumber: store.savedItems[0].soiNumber || "",
+
+      hsCode: "",
+      dgStatus: "",
+      unNumber: "",
+      classNumber: "",
+      packingGroup: "",
+      flashPoint: "",
+      properShippingName: "",
+      technicalName: "",
+      ems: "",
+      marinePollutant: "",
+      innerType: "",
+      outerType: "",
+    });
+  };
+
   return (
     <div style={styles.wrap}>
       <div style={styles.head}>
         <div>
           <h2 style={styles.h2}>All Pioneer Items</h2>
-          <p style={styles.p}>
-            All extracted & saved items in one table. Edit any row.
-          </p>
+          <p style={styles.p}>All extracted & saved items in one table. Edit any row.</p>
         </div>
+        <button style={styles.ghostBtn} onClick={handleAdd}>
+          + Add
+        </button>
       </div>
 
       <div style={styles.card}>
@@ -102,7 +161,12 @@ export default function AllPioneerTab({ store, actions }) {
                 <th style={styles.th}>Boxes</th>
                 <th style={styles.th}>Net Wt</th>
                 <th style={styles.th}>Gross Wt</th>
+
                 <th style={styles.th}>File Name</th>
+                {/* ✅ NEW columns beside File Name */}
+                <th style={styles.th}>PRO No.</th>
+                <th style={styles.th}>SOI No.</th>
+
                 <th style={styles.th}>HS Code</th>
                 <th style={styles.th}>DG/Non-DG</th>
                 <th style={styles.th}>UN No.</th>
@@ -122,7 +186,8 @@ export default function AllPioneerTab({ store, actions }) {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td style={styles.tdMuted} colSpan={7}>
+                  {/* ✅ Updated colspan (now 21 columns total) */}
+                  <td style={styles.tdMuted} colSpan={21}>
                     No saved items yet.
                   </td>
                 </tr>
@@ -137,12 +202,7 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.inputWide}
                             value={draft.description}
-                            onChange={(e) =>
-                              setDraft({
-                                ...draft,
-                                description: e.target.value,
-                              })
-                            }
+                            onChange={(e) => setDraft({ ...draft, description: e.target.value })}
                           />
                         ) : (
                           r.description
@@ -154,9 +214,7 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.qty}
-                            onChange={(e) =>
-                              setDraft({ ...draft, qty: e.target.value })
-                            }
+                            onChange={(e) => setDraft({ ...draft, qty: e.target.value })}
                           />
                         ) : (
                           r.qty
@@ -168,9 +226,7 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.noOfBoxes}
-                            onChange={(e) =>
-                              setDraft({ ...draft, noOfBoxes: e.target.value })
-                            }
+                            onChange={(e) => setDraft({ ...draft, noOfBoxes: e.target.value })}
                           />
                         ) : (
                           r.noOfBoxes
@@ -182,9 +238,7 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.netWeight}
-                            onChange={(e) =>
-                              setDraft({ ...draft, netWeight: e.target.value })
-                            }
+                            onChange={(e) => setDraft({ ...draft, netWeight: e.target.value })}
                           />
                         ) : (
                           r.netWeight
@@ -196,12 +250,7 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.grossWeight}
-                            onChange={(e) =>
-                              setDraft({
-                                ...draft,
-                                grossWeight: e.target.value,
-                              })
-                            }
+                            onChange={(e) => setDraft({ ...draft, grossWeight: e.target.value })}
                           />
                         ) : (
                           r.grossWeight
@@ -213,12 +262,36 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.inputWide}
                             value={draft.fileName}
-                            onChange={(e) =>
-                              setDraft({ ...draft, fileName: e.target.value })
-                            }
+                            onChange={(e) => setDraft({ ...draft, fileName: e.target.value })}
                           />
                         ) : (
                           r.fileName
+                        )}
+                      </td>
+
+                      {/* ✅ NEW: PRO No. */}
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input
+                            style={styles.inputWide}
+                            value={draft.proNumber}
+                            onChange={(e) => setDraft({ ...draft, proNumber: e.target.value })}
+                          />
+                        ) : (
+                          r.proNumber
+                        )}
+                      </td>
+
+                      {/* ✅ NEW: SOI No. */}
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input
+                            style={styles.inputWide}
+                            value={draft.soiNumber}
+                            onChange={(e) => setDraft({ ...draft, soiNumber: e.target.value })}
+                          />
+                        ) : (
+                          r.soiNumber
                         )}
                       </td>
 
@@ -227,9 +300,7 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.hsCode}
-                            onChange={(e) =>
-                              setDraft({ ...draft, hsCode: e.target.value })
-                            }
+                            onChange={(e) => setDraft({ ...draft, hsCode: e.target.value })}
                           />
                         ) : (
                           r.hsCode
@@ -241,9 +312,7 @@ export default function AllPioneerTab({ store, actions }) {
                           <select
                             style={styles.input}
                             value={draft.dgStatus}
-                            onChange={(e) =>
-                              setDraft({ ...draft, dgStatus: e.target.value })
-                            }
+                            onChange={(e) => setDraft({ ...draft, dgStatus: e.target.value })}
                           >
                             <option value="">--</option>
                             <option value="DG">DG</option>
@@ -259,9 +328,7 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.unNumber}
-                            onChange={(e) =>
-                              setDraft({ ...draft, unNumber: e.target.value })
-                            }
+                            onChange={(e) => setDraft({ ...draft, unNumber: e.target.value })}
                           />
                         ) : (
                           r.unNumber
@@ -273,12 +340,7 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.classNumber}
-                            onChange={(e) =>
-                              setDraft({
-                                ...draft,
-                                classNumber: e.target.value,
-                              })
-                            }
+                            onChange={(e) => setDraft({ ...draft, classNumber: e.target.value })}
                           />
                         ) : (
                           r.classNumber
@@ -290,12 +352,7 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.packingGroup}
-                            onChange={(e) =>
-                              setDraft({
-                                ...draft,
-                                packingGroup: e.target.value,
-                              })
-                            }
+                            onChange={(e) => setDraft({ ...draft, packingGroup: e.target.value })}
                           />
                         ) : (
                           r.packingGroup
@@ -307,9 +364,7 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.flashPoint}
-                            onChange={(e) =>
-                              setDraft({ ...draft, flashPoint: e.target.value })
-                            }
+                            onChange={(e) => setDraft({ ...draft, flashPoint: e.target.value })}
                           />
                         ) : (
                           r.flashPoint
@@ -322,10 +377,7 @@ export default function AllPioneerTab({ store, actions }) {
                             style={styles.inputWide}
                             value={draft.properShippingName}
                             onChange={(e) =>
-                              setDraft({
-                                ...draft,
-                                properShippingName: e.target.value,
-                              })
+                              setDraft({ ...draft, properShippingName: e.target.value })
                             }
                           />
                         ) : (
@@ -338,12 +390,7 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.inputWide}
                             value={draft.technicalName}
-                            onChange={(e) =>
-                              setDraft({
-                                ...draft,
-                                technicalName: e.target.value,
-                              })
-                            }
+                            onChange={(e) => setDraft({ ...draft, technicalName: e.target.value })}
                           />
                         ) : (
                           r.technicalName
@@ -355,9 +402,7 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.ems}
-                            onChange={(e) =>
-                              setDraft({ ...draft, ems: e.target.value })
-                            }
+                            onChange={(e) => setDraft({ ...draft, ems: e.target.value })}
                           />
                         ) : (
                           r.ems
@@ -370,10 +415,7 @@ export default function AllPioneerTab({ store, actions }) {
                             style={styles.input}
                             value={draft.marinePollutant}
                             onChange={(e) =>
-                              setDraft({
-                                ...draft,
-                                marinePollutant: e.target.value,
-                              })
+                              setDraft({ ...draft, marinePollutant: e.target.value })
                             }
                           >
                             <option value="">--</option>
@@ -390,9 +432,7 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.innerType}
-                            onChange={(e) =>
-                              setDraft({ ...draft, innerType: e.target.value })
-                            }
+                            onChange={(e) => setDraft({ ...draft, innerType: e.target.value })}
                           />
                         ) : (
                           r.innerType
@@ -404,9 +444,7 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.outerType}
-                            onChange={(e) =>
-                              setDraft({ ...draft, outerType: e.target.value })
-                            }
+                            onChange={(e) => setDraft({ ...draft, outerType: e.target.value })}
                           />
                         ) : (
                           r.outerType
@@ -415,24 +453,15 @@ export default function AllPioneerTab({ store, actions }) {
 
                       <td style={styles.td}>
                         {!isEditing ? (
-                          <button
-                            style={styles.ghostBtn}
-                            onClick={() => startEdit(r)}
-                          >
+                          <button style={styles.ghostBtn} onClick={() => startEdit(r)}>
                             Edit
                           </button>
                         ) : (
                           <div style={{ display: "flex", gap: 8 }}>
-                            <button
-                              style={styles.primaryBtn}
-                              onClick={saveEdit}
-                            >
+                            <button style={styles.primaryBtn} onClick={saveEdit}>
                               Save
                             </button>
-                            <button
-                              style={styles.ghostBtn}
-                              onClick={cancelEdit}
-                            >
+                            <button style={styles.ghostBtn} onClick={cancelEdit}>
                               Back
                             </button>
                           </div>
