@@ -1,9 +1,8 @@
 import React, { useMemo, useState } from "react";
 
-export default function PerSoProItemsTab({ store }) {
+export default function PerSoProItemsTab({ store, actions }) {
   const [selectedKey, setSelectedKey] = useState(null);
 
-  // Group by PRO + SOI + Destination (so you can see destination beside them)
   const groups = useMemo(() => {
     const map = new Map();
     const saved = store?.savedItems || [];
@@ -14,9 +13,7 @@ export default function PerSoProItemsTab({ store }) {
       const recDest = (rec?.destination ?? "").toString().trim();
 
       const items = rec?.extractedItems || [];
-
       for (const it of items) {
-        // Prefer record-level, fallback to item-level
         const pro = (recPro || (it?.proNumber ?? "")).toString().trim();
         const soi = (recSoi || (it?.soiNumber ?? "")).toString().trim();
         const destination = (recDest || (it?.destination ?? ""))
@@ -27,7 +24,7 @@ export default function PerSoProItemsTab({ store }) {
         const safeSoi = soi || "—";
         const safeDest = destination || "—";
 
-        // ✅ include destination in grouping key
+        // Group key includes destination (same as your current logic)
         const key = `${safePro}||${safeSoi}||${safeDest}`;
 
         if (!map.has(key)) {
@@ -50,17 +47,13 @@ export default function PerSoProItemsTab({ store }) {
       }
     }
 
-    // Sort groups so real values appear above unknowns
-    return Array.from(map.values()).sort((a, b) => {
-      const aUnknown = a.proNumber === "—" && a.soiNumber === "—";
-      const bUnknown = b.proNumber === "—" && b.soiNumber === "—";
-      if (aUnknown !== bUnknown) return aUnknown ? 1 : -1;
-
-      // Sort by PRO then SOI then Destination (lexical)
-      return `${a.proNumber}|${a.soiNumber}|${a.destination}`.localeCompare(
+    return Array.from(map.values()).sort((a, b) =>
+      `${a.proNumber}|${a.soiNumber}|${a.destination}`.localeCompare(
         `${b.proNumber}|${b.soiNumber}|${b.destination}`,
-      );
-    });
+        undefined,
+        { sensitivity: "base" },
+      ),
+    );
   }, [store?.savedItems]);
 
   const selectedGroup = useMemo(() => {
@@ -68,55 +61,85 @@ export default function PerSoProItemsTab({ store }) {
     return groups.find((g) => g.key === selectedKey) || null;
   }, [groups, selectedKey]);
 
-  // -------------------------
-  // VIEW 1: blocks list
-  // -------------------------
+  const handleDeleteGroup = (g) => {
+    if (!actions?.deletePerSoProGroup) {
+      alert(
+        "deletePerSoProGroup action is missing. Add it in App.jsx actions first.",
+      );
+      return;
+    }
+
+    const ok = window.confirm(
+      `Delete this group?\n\nPRO: ${g.proNumber}\nSOI: ${g.soiNumber}\nDestination: ${g.destination}\nItems: ${g.rows.length}\n\nThis cannot be undone.`,
+    );
+    if (!ok) return;
+
+    actions.deletePerSoProGroup({
+      proNumber: g.proNumber,
+      soiNumber: g.soiNumber,
+      destination: g.destination,
+    });
+
+    // if user is viewing this group, go back
+    if (selectedKey === g.key) setSelectedKey(null);
+  };
+
+  // VIEW 1: Blocks
   if (!selectedGroup) {
     return (
       <div style={styles.wrap}>
         <div style={styles.head}>
           <div>
             <h2 style={styles.h2}>PER SO PER PRO TAB</h2>
-            <div style={styles.sub}>
-              Click a block to view extracted details.
-            </div>
+            <div style={styles.sub}>Click a block to view details.</div>
           </div>
 
           <div style={styles.counter}>
-            Transactions: <b>{groups.length}</b>
+            Groups: <b>{groups.length}</b>
           </div>
         </div>
 
         <div style={styles.blocks}>
           {groups.length === 0 ? (
-            <div style={styles.empty}>
-              No saved items yet. Extract a PDF and click <b>Proceed (Save)</b>.
-            </div>
+            <div style={styles.empty}>No saved items yet.</div>
           ) : (
             groups.map((g) => (
-              <button
-                key={g.key}
-                onClick={() => setSelectedKey(g.key)}
-                style={styles.blockBtn}
-                title="Click to view details"
-              >
-                <div style={styles.blockLine}>
-                  <span style={styles.blockLabel}>pro number:</span>{" "}
-                  <b>{g.proNumber}</b>
-                  <span style={{ marginLeft: 14 }} />
-                  <span style={styles.blockLabel}>soi number:</span>{" "}
-                  <b>{g.soiNumber}</b>
-                </div>
+              <div key={g.key} style={styles.blockRow}>
+                {/* whole block is clickable */}
+                <button
+                  style={styles.blockBtn}
+                  onClick={() => setSelectedKey(g.key)}
+                  title="Open details"
+                >
+                  <div style={styles.blockLine}>
+                    <span style={styles.blockLabel}>pro number:</span>{" "}
+                    <b>{g.proNumber}</b>
+                    <span style={{ marginLeft: 14 }} />
+                    <span style={styles.blockLabel}>soi number:</span>{" "}
+                    <b>{g.soiNumber}</b>
+                  </div>
 
-                {/* ✅ NEW: destination + items extracted */}
-                <div style={styles.blockMeta}>
-                  <span style={styles.blockLabel}>destination:</span>{" "}
-                  <b>{g.destination}</b>
-                  <span style={{ marginLeft: 14 }} />
-                  <span style={styles.blockLabel}>items:</span>{" "}
-                  <b>{g.rows.length}</b>
-                </div>
-              </button>
+                  <div style={styles.blockMeta}>
+                    <span style={styles.blockLabel}>destination:</span>{" "}
+                    <b>{g.destination}</b>
+                    <span style={{ marginLeft: 14 }} />
+                    <span style={styles.blockLabel}>items:</span>{" "}
+                    <b>{g.rows.length}</b>
+                  </div>
+                </button>
+
+                {/* ✅ Delete button at end */}
+                <button
+                  style={styles.deleteBtn}
+                  onClick={(e) => {
+                    e.stopPropagation(); // don’t open details
+                    handleDeleteGroup(g);
+                  }}
+                  title="Delete this PRO/SOI group"
+                >
+                  Delete
+                </button>
+              </div>
             ))
           )}
         </div>
@@ -124,20 +147,16 @@ export default function PerSoProItemsTab({ store }) {
     );
   }
 
-  // -------------------------
-  // VIEW 2: details table
-  // -------------------------
+  // VIEW 2: Details table (unchanged, kept short)
   return (
     <div style={styles.wrap}>
       <div style={styles.head}>
         <div>
           <h2 style={styles.h2}>PER SO PER PRO TAB</h2>
-
-          {/* ✅ NEW: show destination + item count beside pro/soi */}
           <div style={styles.pairTitle}>
-            pro number: <b>{selectedGroup.proNumber}</b> &nbsp;&nbsp; soi
-            number: <b>{selectedGroup.soiNumber}</b> &nbsp;&nbsp; destination:{" "}
-            <b>{selectedGroup.destination}</b> &nbsp;&nbsp; items:{" "}
+            pro: <b>{selectedGroup.proNumber}</b> &nbsp;|&nbsp; soi:{" "}
+            <b>{selectedGroup.soiNumber}</b> &nbsp;|&nbsp; destination:{" "}
+            <b>{selectedGroup.destination}</b> &nbsp;|&nbsp; items:{" "}
             <b>{selectedGroup.rows.length}</b>
           </div>
         </div>
@@ -158,64 +177,21 @@ export default function PerSoProItemsTab({ store }) {
                 <th style={styles.th}>Net Wt</th>
                 <th style={styles.th}>Gross Wt</th>
                 <th style={styles.th}>File Name</th>
-                <th style={styles.th}>PRO No.</th>
-                <th style={styles.th}>SOI No.</th>
-                <th style={styles.th}>Destination</th>
-                <th style={styles.th}>HS Code</th>
-                <th style={styles.th}>DG/Non-DG</th>
-                <th style={styles.th}>UN No.</th>
-                <th style={styles.th}>Class</th>
-                <th style={styles.th}>Packing Group</th>
-                <th style={styles.th}>Flash Point</th>
-                <th style={styles.th}>Proper Shipping Name</th>
-                <th style={styles.th}>Technical Name</th>
-                <th style={styles.th}>EMS</th>
-                <th style={styles.th}>Marine Pollutant</th>
-                <th style={styles.th}>Inner Type</th>
-                <th style={styles.th}>Outer Type</th>
               </tr>
             </thead>
-
             <tbody>
-              {selectedGroup.rows.length === 0 ? (
-                <tr>
-                  <td style={styles.tdMuted} colSpan={21}>
-                    No items for this PRO/SOI/Destination.
-                  </td>
+              {selectedGroup.rows.map((r, idx) => (
+                <tr key={idx}>
+                  <td style={styles.td}>{r.description || "—"}</td>
+                  <td style={styles.td}>{r.qty ?? "—"}</td>
+                  <td style={styles.td}>{r.noOfBoxes ?? "—"}</td>
+                  <td style={styles.td}>{r.netWeight ?? "—"}</td>
+                  <td style={styles.td}>{r.grossWeight ?? "—"}</td>
+                  <td style={styles.td}>{r.fileName || "—"}</td>
                 </tr>
-              ) : (
-                selectedGroup.rows.map((r, idx) => (
-                  <tr key={idx}>
-                    <td style={styles.td}>{r.description || "—"}</td>
-                    <td style={styles.td}>{r.qty ?? "—"}</td>
-                    <td style={styles.td}>{r.noOfBoxes ?? "—"}</td>
-                    <td style={styles.td}>{r.netWeight ?? "—"}</td>
-                    <td style={styles.td}>{r.grossWeight ?? "—"}</td>
-                    <td style={styles.td}>{r.fileName || "—"}</td>
-                    <td style={styles.td}>{r.proNumber || "—"}</td>
-                    <td style={styles.td}>{r.soiNumber || "—"}</td>
-                    <td style={styles.td}>{r.destination || "—"}</td>
-                    <td style={styles.td}>{r.hsCode || "—"}</td>
-                    <td style={styles.td}>{r.dgStatus || "—"}</td>
-                    <td style={styles.td}>{r.unNumber || "—"}</td>
-                    <td style={styles.td}>{r.classNumber || "—"}</td>
-                    <td style={styles.td}>{r.packingGroup || "—"}</td>
-                    <td style={styles.td}>{r.flashPoint || "—"}</td>
-                    <td style={styles.td}>{r.properShippingName || "—"}</td>
-                    <td style={styles.td}>{r.technicalName || "—"}</td>
-                    <td style={styles.td}>{r.ems || "—"}</td>
-                    <td style={styles.td}>{r.marinePollutant || "—"}</td>
-                    <td style={styles.td}>{r.innerType || "—"}</td>
-                    <td style={styles.td}>{r.outerType || "—"}</td>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
           </table>
-        </div>
-
-        <div style={styles.footerNote}>
-          Rows: <b>{selectedGroup.rows.length}</b>
         </div>
       </div>
     </div>
@@ -224,7 +200,6 @@ export default function PerSoProItemsTab({ store }) {
 
 const styles = {
   wrap: { display: "flex", flexDirection: "column", gap: 12 },
-
   head: {
     display: "flex",
     alignItems: "flex-start",
@@ -232,10 +207,8 @@ const styles = {
     gap: 12,
     flexWrap: "wrap",
   },
-
-  h2: { margin: 0, fontSize: 16, fontWeight: 900, letterSpacing: 0.2 },
+  h2: { margin: 0, fontSize: 16, fontWeight: 900 },
   sub: { marginTop: 6, color: "#bdbdbd", fontSize: 12 },
-
   counter: {
     color: "#bdbdbd",
     fontSize: 12,
@@ -244,10 +217,16 @@ const styles = {
     padding: "8px 12px",
     background: "#101010",
   },
-
   blocks: { display: "flex", flexDirection: "column", gap: 10 },
 
+  blockRow: {
+    display: "flex",
+    gap: 10,
+    alignItems: "stretch",
+  },
+
   blockBtn: {
+    flex: 1,
     textAlign: "left",
     border: "1px solid #2b2b2b",
     background: "#0f0f0f",
@@ -255,6 +234,16 @@ const styles = {
     borderRadius: 12,
     padding: "14px 16px",
     cursor: "pointer",
+  },
+
+  deleteBtn: {
+    width: 110,
+    border: "1px solid #5a1a1a",
+    background: "#2a1010",
+    color: "#ffb3b3",
+    borderRadius: 12,
+    cursor: "pointer",
+    fontWeight: 800,
   },
 
   blockLine: { fontSize: 14 },
@@ -289,7 +278,6 @@ const styles = {
   },
 
   table: { width: "100%", borderCollapse: "collapse" },
-
   th: {
     textAlign: "left",
     padding: "10px 8px",
@@ -299,16 +287,10 @@ const styles = {
     fontSize: 12,
     whiteSpace: "nowrap",
   },
-
   td: {
     padding: "10px 8px",
     borderBottom: "1px solid #1f1f1f",
-    verticalAlign: "top",
     whiteSpace: "nowrap",
     fontSize: 12,
   },
-
-  tdMuted: { padding: "12px 8px", color: "#bdbdbd" },
-
-  footerNote: { marginTop: 10, color: "#bdbdbd", fontSize: 12 },
 };

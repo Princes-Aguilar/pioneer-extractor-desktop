@@ -37,7 +37,9 @@ export default function MenuScreen({ store, actions }) {
         {active === "all" && (
           <AllPioneerItemsTab store={store} actions={actions} />
         )}
-        {active === "persopro" && <PerSoProItemsTab store={store} />}
+        {active === "persopro" && (
+          <PerSoProItemsTab store={store} actions={actions} />
+        )}{" "}
         {active === "autodocs" && <AutoDocsGenTab />}
       </main>
     </div>

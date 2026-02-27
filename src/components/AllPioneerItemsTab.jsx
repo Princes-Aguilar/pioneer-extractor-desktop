@@ -1,32 +1,148 @@
 import React, { useMemo, useState } from "react";
 
 export default function AllPioneerTab({ store, actions }) {
-  const [editingKey, setEditingKey] = useState(null); // unique row key
+  const [editingKey, setEditingKey] = useState(null);
   const [draft, setDraft] = useState(null);
 
-  // Flatten all saved records into rows
+  // -----------------------------
+  // Helpers: normalize + clean description
+  // -----------------------------
+  const normSpaces = (s) => (s ?? "").toString().replace(/\s+/g, " ").trim();
+
+  // Remove common measurement patterns from a product description.
+  // This is intentionally conservative; you can add more patterns later.
+  const cleanDescription = (input) => {
+    let s = normSpaces(input).toUpperCase();
+
+    // remove content inside parentheses (often pack/size notes)
+    s = s.replace(/\([^)]*\)/g, " ");
+
+    // normalize separators
+    s = s.replace(/[•·]/g, " ");
+
+    // remove dimension patterns like 10X20, 10 X 20, 10×20
+    s = s.replace(/\b\d+(\.\d+)?\s*(X|\*|×)\s*\d+(\.\d+)?\b/g, " ");
+
+    // remove fractions like 1/4 (often sizes)
+    s = s.replace(/\b\d+\s*\/\s*\d+\b/g, " ");
+
+    // remove numbers + units (ML/L/G/KG/etc.)
+    s = s.replace(
+      /\b\d+(\.\d+)?\s*(ML|L|LTR|LITRE|LITER|G|GRAM|GRAMS|KG|KGS|MG|OZ|LB|LBS|GAL|GALLON|GALLONS|CC|CM|MM|M|IN|INCH|INCHES|FT|FEET|YD|PCS|PC|PIECE|PIECES|SET|SETS|PACK|PACKS|PAIR|PAIRS|PINT|QUART|QT|ROLL|ROLLS)\b/g,
+      " ",
+    );
+
+    // remove things like "500/BOX", "10/PK"
+    s = s.replace(
+      /\b\d+\s*\/\s*(BOX|PK|PACK|CT|CASE|BAG|SACK|DRUM|PALLET|ROLL)\b/g,
+      " ",
+    );
+
+    // ✅ NEW: remove common color words (add more anytime)
+    // This collapses: "GLOSS WHITE" and "GLOSS ULTRAMARINE" -> "GLOSS"
+    const COLORS = [
+      "PIONEER ",
+      "PIONEER",
+      "WHITE",
+      "BLACK",
+      "RED",
+      "BLUE",
+      "GREEN",
+      "YELLOW",
+      "ORANGE",
+      "VIOLET",
+      "PURPLE",
+      "PINK",
+      "BROWN",
+      "GRAY",
+      "GREY",
+      "SILVER",
+      "GOLD",
+      "BEIGE",
+      "CREAM",
+      "IVORY",
+      "NAVY",
+      "SKY",
+      "TEAL",
+      "TURQUOISE",
+      "MAROON",
+      "MAGENTA",
+      "CYAN",
+      "LIME",
+      "OLIVE",
+      "TAN",
+      "BRONZE",
+      "COPPER",
+      "PEARL",
+      "CLEAR",
+      "TRANSPARENT",
+      "ULTRAMARINE",
+      "SCARLET",
+      "CRIMSON",
+      "ROYAL",
+    ];
+
+    // remove phrases like "OFF WHITE", "LIGHT BLUE", "DARK GRAY"
+    s = s.replace(
+      /\b(LIGHT|DARK|DEEP|PALE|BRIGHT|MATTE|GLOSS|GLOSSY)\s+(WHITE|BLACK|RED|BLUE|GREEN|YELLOW|ORANGE|GRAY|GREY|SILVER|GOLD|BEIGE|CREAM|IVORY|NAVY|TEAL|TURQUOISE|MAROON|MAGENTA|CYAN|LIME|OLIVE|TAN|BRONZE|COPPER|PEARL|CLEAR|TRANSPARENT|ULTRAMARINE)\b/g,
+      " ",
+    );
+
+    // remove single color tokens
+    const colorRegex = new RegExp(`\\b(${COLORS.join("|")})\\b`, "g");
+    s = s.replace(colorRegex, " ");
+
+    // optional: remove leftover standalone numbers (comment out if you have model codes like "LOCTITE 243")
+    s = s.replace(/\b\d+(\.\d+)?\b/g, " ");
+
+    // final cleanup
+    s = s.replace(/[^A-Z0-9\s\-]/g, " ");
+    s = normSpaces(s);
+
+    // ✅ If you want to remove trailing leftover words like LITERS/LITER too (just in case)
+    s = s.replace(/\b(LITER|LITRE|LITERS|LITRES)\b/g, " ");
+    s = normSpaces(s);
+
+    return s;
+  };
+  const makeKey = (descClean) => descClean.toLowerCase();
+
+  // -----------------------------
+  // Build UNIQUE rows for All Pioneer
+  // -----------------------------
   const rows = useMemo(() => {
     const out = [];
+    const seen = new Set();
+
+    // savedItems is newest-first (based on your save logic)
+    // so the first time we see a product, we keep the newest one.
     for (const rec of store.savedItems || []) {
-      for (let i = 0; i < (rec.extractedItems || []).length; i++) {
-        const it = rec.extractedItems[i];
+      const items = rec.extractedItems || [];
+
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+
+        const rawDesc = it.description ?? "";
+        const descClean = cleanDescription(rawDesc);
+
+        // If cleaning wipes everything, fall back to raw
+        const finalClean =
+          descClean || normSpaces(rawDesc).toUpperCase() || "—";
+
+        const key = makeKey(finalClean);
+        if (seen.has(key)) continue;
+        seen.add(key);
+
         out.push({
-          rowKey: `${rec.id}::${i}`, // stable unique key for editing
+          rowKey: `${rec.id}::${i}`,
           recordId: rec.id,
           itemIndex: i,
 
-          description: it.description ?? "",
-          qty: it.qty ?? "",
-          noOfBoxes: it.noOfBoxes ?? "",
-          netWeight: it.netWeight ?? "",
-          grossWeight: it.grossWeight ?? "",
+          // show cleaned description, but keep raw for tooltip/debug
+          descriptionClean: finalClean,
+          descriptionRaw: normSpaces(rawDesc),
 
-          fileName: it.fileName ?? rec.fileName ?? "",
-
-          // ✅ NEW: PRO/SOI beside filename (prefer record-level, fallback to item-level)
-          proNumber: it.proNumber ?? rec.proNumber ?? "",
-          soiNumber: it.soiNumber ?? rec.soiNumber ?? "",
-
+          // keep other fields (you can decide what to show in this unique list)
           hsCode: it.hsCode ?? "",
           dgStatus: it.dgStatus ?? "",
           unNumber: it.unNumber ?? "",
@@ -42,12 +158,26 @@ export default function AllPioneerTab({ store, actions }) {
         });
       }
     }
+    // Sort alphabetically by cleaned description
+    out.sort((a, b) =>
+      (a.descriptionClean || "").localeCompare(
+        b.descriptionClean || "",
+        undefined,
+        { sensitivity: "base" }, // ignore case
+      ),
+    );
+
+    return out;
     return out;
   }, [store.savedItems]);
 
   const startEdit = (row) => {
     setEditingKey(row.rowKey);
-    setDraft({ ...row });
+    // edit the cleaned description as the "description" field (saves into original item)
+    setDraft({
+      ...row,
+      description: row.descriptionClean,
+    });
   };
 
   const cancelEdit = () => {
@@ -62,30 +192,20 @@ export default function AllPioneerTab({ store, actions }) {
       recordId: draft.recordId,
       itemIndex: draft.itemIndex,
       patch: {
-        description: String(draft.description ?? "").trim(),
-        qty: draft.qty === "" ? null : Number(draft.qty),
-        noOfBoxes: draft.noOfBoxes === "" ? null : Number(draft.noOfBoxes),
-        netWeight: draft.netWeight === "" ? null : Number(draft.netWeight),
-        grossWeight: draft.grossWeight === "" ? null : Number(draft.grossWeight),
-
-        fileName: String(draft.fileName ?? "").trim(),
-
-        // ✅ NEW: Save editable PRO/SOI too
-        proNumber: String(draft.proNumber ?? "").trim(),
-        soiNumber: String(draft.soiNumber ?? "").trim(),
-
-        hsCode: String(draft.hsCode ?? "").trim(),
-        dgStatus: String(draft.dgStatus ?? "").trim(),
-        unNumber: String(draft.unNumber ?? "").trim(),
-        classNumber: String(draft.classNumber ?? "").trim(),
-        packingGroup: String(draft.packingGroup ?? "").trim(),
-        flashPoint: String(draft.flashPoint ?? "").trim(),
-        properShippingName: String(draft.properShippingName ?? "").trim(),
-        technicalName: String(draft.technicalName ?? "").trim(),
-        ems: String(draft.ems ?? "").trim(),
-        marinePollutant: String(draft.marinePollutant ?? "").trim(),
-        innerType: String(draft.innerType ?? "").trim(),
-        outerType: String(draft.outerType ?? "").trim(),
+        // Save what user edited as the item description (stored)
+        description: normSpaces(draft.description),
+        hsCode: normSpaces(draft.hsCode),
+        dgStatus: normSpaces(draft.dgStatus),
+        unNumber: normSpaces(draft.unNumber),
+        classNumber: normSpaces(draft.classNumber),
+        packingGroup: normSpaces(draft.packingGroup),
+        flashPoint: normSpaces(draft.flashPoint),
+        properShippingName: normSpaces(draft.properShippingName),
+        technicalName: normSpaces(draft.technicalName),
+        ems: normSpaces(draft.ems),
+        marinePollutant: normSpaces(draft.marinePollutant),
+        innerType: normSpaces(draft.innerType),
+        outerType: normSpaces(draft.outerType),
       },
     });
 
@@ -93,62 +213,28 @@ export default function AllPioneerTab({ store, actions }) {
     setDraft(null);
   };
 
-  const handleAdd = () => {
-    if (!store.savedItems?.length) {
-      setError?.("No saved records yet. Extract and Save first.");
-      return;
-    }
-
-    // Add a row to the top of the latest record
-    actions.addSavedItemRowTop();
-
-    // Immediately open edit mode for that new top row:
-    const recordId = store.savedItems[0].id;
-    const rowKey = `${recordId}::0`;
-
-    setEditingKey(rowKey);
-
-    // draft should match your row shape (include recordId + itemIndex)
-    setDraft({
-      rowKey,
-      recordId,
-      itemIndex: 0,
-      description: "",
-      qty: "",
-      noOfBoxes: "",
-      netWeight: "",
-      grossWeight: "",
-      fileName: store.savedItems[0].fileName || "",
-
-      // ✅ NEW: include blank defaults
-      proNumber: store.savedItems[0].proNumber || "",
-      soiNumber: store.savedItems[0].soiNumber || "",
-
-      hsCode: "",
-      dgStatus: "",
-      unNumber: "",
-      classNumber: "",
-      packingGroup: "",
-      flashPoint: "",
-      properShippingName: "",
-      technicalName: "",
-      ems: "",
-      marinePollutant: "",
-      innerType: "",
-      outerType: "",
-    });
-  };
+  const COLS = 13;
 
   return (
     <div style={styles.wrap}>
       <div style={styles.head}>
         <div>
-          <h2 style={styles.h2}>All Pioneer Items</h2>
-          <p style={styles.p}>All extracted & saved items in one table. Edit any row.</p>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <h2 style={styles.h2}>All Pioneer Items (Unique)</h2>
+            <span style={styles.pill}>Unique items: {rows.length}</span>
+          </div>
+
+          <p style={styles.p}>
+            Unique items only (measurements removed). Edit any row.
+          </p>
         </div>
-        <button style={styles.ghostBtn} onClick={handleAdd}>
-          + Add
-        </button>
       </div>
 
       <div style={styles.card}>
@@ -156,17 +242,7 @@ export default function AllPioneerTab({ store, actions }) {
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={styles.th}>Description</th>
-                <th style={styles.th}>Qty</th>
-                <th style={styles.th}>Boxes</th>
-                <th style={styles.th}>Net Wt</th>
-                <th style={styles.th}>Gross Wt</th>
-
-                <th style={styles.th}>File Name</th>
-                {/* ✅ NEW columns beside File Name */}
-                <th style={styles.th}>PRO No.</th>
-                <th style={styles.th}>SOI No.</th>
-
+                <th style={styles.th}>Description (Clean)</th>
                 <th style={styles.th}>HS Code</th>
                 <th style={styles.th}>DG/Non-DG</th>
                 <th style={styles.th}>UN No.</th>
@@ -186,8 +262,7 @@ export default function AllPioneerTab({ store, actions }) {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  {/* ✅ Updated colspan (now 21 columns total) */}
-                  <td style={styles.tdMuted} colSpan={21}>
+                  <td style={styles.tdMuted} colSpan={COLS}>
                     No saved items yet.
                   </td>
                 </tr>
@@ -197,101 +272,20 @@ export default function AllPioneerTab({ store, actions }) {
 
                   return (
                     <tr key={r.rowKey}>
-                      <td style={styles.td}>
+                      <td style={styles.td} title={r.descriptionRaw || ""}>
                         {isEditing ? (
                           <input
                             style={styles.inputWide}
                             value={draft.description}
-                            onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                description: e.target.value,
+                              })
+                            }
                           />
                         ) : (
-                          r.description
-                        )}
-                      </td>
-
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input
-                            style={styles.input}
-                            value={draft.qty}
-                            onChange={(e) => setDraft({ ...draft, qty: e.target.value })}
-                          />
-                        ) : (
-                          r.qty
-                        )}
-                      </td>
-
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input
-                            style={styles.input}
-                            value={draft.noOfBoxes}
-                            onChange={(e) => setDraft({ ...draft, noOfBoxes: e.target.value })}
-                          />
-                        ) : (
-                          r.noOfBoxes
-                        )}
-                      </td>
-
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input
-                            style={styles.input}
-                            value={draft.netWeight}
-                            onChange={(e) => setDraft({ ...draft, netWeight: e.target.value })}
-                          />
-                        ) : (
-                          r.netWeight
-                        )}
-                      </td>
-
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input
-                            style={styles.input}
-                            value={draft.grossWeight}
-                            onChange={(e) => setDraft({ ...draft, grossWeight: e.target.value })}
-                          />
-                        ) : (
-                          r.grossWeight
-                        )}
-                      </td>
-
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input
-                            style={styles.inputWide}
-                            value={draft.fileName}
-                            onChange={(e) => setDraft({ ...draft, fileName: e.target.value })}
-                          />
-                        ) : (
-                          r.fileName
-                        )}
-                      </td>
-
-                      {/* ✅ NEW: PRO No. */}
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input
-                            style={styles.inputWide}
-                            value={draft.proNumber}
-                            onChange={(e) => setDraft({ ...draft, proNumber: e.target.value })}
-                          />
-                        ) : (
-                          r.proNumber
-                        )}
-                      </td>
-
-                      {/* ✅ NEW: SOI No. */}
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input
-                            style={styles.inputWide}
-                            value={draft.soiNumber}
-                            onChange={(e) => setDraft({ ...draft, soiNumber: e.target.value })}
-                          />
-                        ) : (
-                          r.soiNumber
+                          r.descriptionClean
                         )}
                       </td>
 
@@ -300,10 +294,12 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.hsCode}
-                            onChange={(e) => setDraft({ ...draft, hsCode: e.target.value })}
+                            onChange={(e) =>
+                              setDraft({ ...draft, hsCode: e.target.value })
+                            }
                           />
                         ) : (
-                          r.hsCode
+                          r.hsCode || "—"
                         )}
                       </td>
 
@@ -312,14 +308,16 @@ export default function AllPioneerTab({ store, actions }) {
                           <select
                             style={styles.input}
                             value={draft.dgStatus}
-                            onChange={(e) => setDraft({ ...draft, dgStatus: e.target.value })}
+                            onChange={(e) =>
+                              setDraft({ ...draft, dgStatus: e.target.value })
+                            }
                           >
                             <option value="">--</option>
                             <option value="DG">DG</option>
                             <option value="Non-DG">Non-DG</option>
                           </select>
                         ) : (
-                          r.dgStatus
+                          r.dgStatus || "—"
                         )}
                       </td>
 
@@ -328,10 +326,12 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.unNumber}
-                            onChange={(e) => setDraft({ ...draft, unNumber: e.target.value })}
+                            onChange={(e) =>
+                              setDraft({ ...draft, unNumber: e.target.value })
+                            }
                           />
                         ) : (
-                          r.unNumber
+                          r.unNumber || "—"
                         )}
                       </td>
 
@@ -340,10 +340,15 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.classNumber}
-                            onChange={(e) => setDraft({ ...draft, classNumber: e.target.value })}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                classNumber: e.target.value,
+                              })
+                            }
                           />
                         ) : (
-                          r.classNumber
+                          r.classNumber || "—"
                         )}
                       </td>
 
@@ -352,10 +357,15 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.packingGroup}
-                            onChange={(e) => setDraft({ ...draft, packingGroup: e.target.value })}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                packingGroup: e.target.value,
+                              })
+                            }
                           />
                         ) : (
-                          r.packingGroup
+                          r.packingGroup || "—"
                         )}
                       </td>
 
@@ -364,10 +374,12 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.flashPoint}
-                            onChange={(e) => setDraft({ ...draft, flashPoint: e.target.value })}
+                            onChange={(e) =>
+                              setDraft({ ...draft, flashPoint: e.target.value })
+                            }
                           />
                         ) : (
-                          r.flashPoint
+                          r.flashPoint || "—"
                         )}
                       </td>
 
@@ -377,11 +389,14 @@ export default function AllPioneerTab({ store, actions }) {
                             style={styles.inputWide}
                             value={draft.properShippingName}
                             onChange={(e) =>
-                              setDraft({ ...draft, properShippingName: e.target.value })
+                              setDraft({
+                                ...draft,
+                                properShippingName: e.target.value,
+                              })
                             }
                           />
                         ) : (
-                          r.properShippingName
+                          r.properShippingName || "—"
                         )}
                       </td>
 
@@ -390,10 +405,15 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.inputWide}
                             value={draft.technicalName}
-                            onChange={(e) => setDraft({ ...draft, technicalName: e.target.value })}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                technicalName: e.target.value,
+                              })
+                            }
                           />
                         ) : (
-                          r.technicalName
+                          r.technicalName || "—"
                         )}
                       </td>
 
@@ -402,10 +422,12 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.ems}
-                            onChange={(e) => setDraft({ ...draft, ems: e.target.value })}
+                            onChange={(e) =>
+                              setDraft({ ...draft, ems: e.target.value })
+                            }
                           />
                         ) : (
-                          r.ems
+                          r.ems || "—"
                         )}
                       </td>
 
@@ -415,7 +437,10 @@ export default function AllPioneerTab({ store, actions }) {
                             style={styles.input}
                             value={draft.marinePollutant}
                             onChange={(e) =>
-                              setDraft({ ...draft, marinePollutant: e.target.value })
+                              setDraft({
+                                ...draft,
+                                marinePollutant: e.target.value,
+                              })
                             }
                           >
                             <option value="">--</option>
@@ -423,7 +448,7 @@ export default function AllPioneerTab({ store, actions }) {
                             <option value="No">No</option>
                           </select>
                         ) : (
-                          r.marinePollutant
+                          r.marinePollutant || "—"
                         )}
                       </td>
 
@@ -432,10 +457,12 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.innerType}
-                            onChange={(e) => setDraft({ ...draft, innerType: e.target.value })}
+                            onChange={(e) =>
+                              setDraft({ ...draft, innerType: e.target.value })
+                            }
                           />
                         ) : (
-                          r.innerType
+                          r.innerType || "—"
                         )}
                       </td>
 
@@ -444,24 +471,35 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.outerType}
-                            onChange={(e) => setDraft({ ...draft, outerType: e.target.value })}
+                            onChange={(e) =>
+                              setDraft({ ...draft, outerType: e.target.value })
+                            }
                           />
                         ) : (
-                          r.outerType
+                          r.outerType || "—"
                         )}
                       </td>
 
                       <td style={styles.td}>
                         {!isEditing ? (
-                          <button style={styles.ghostBtn} onClick={() => startEdit(r)}>
+                          <button
+                            style={styles.ghostBtn}
+                            onClick={() => startEdit(r)}
+                          >
                             Edit
                           </button>
                         ) : (
                           <div style={{ display: "flex", gap: 8 }}>
-                            <button style={styles.primaryBtn} onClick={saveEdit}>
+                            <button
+                              style={styles.primaryBtn}
+                              onClick={saveEdit}
+                            >
                               Save
                             </button>
-                            <button style={styles.ghostBtn} onClick={cancelEdit}>
+                            <button
+                              style={styles.ghostBtn}
+                              onClick={cancelEdit}
+                            >
                               Back
                             </button>
                           </div>
@@ -473,6 +511,10 @@ export default function AllPioneerTab({ store, actions }) {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div style={styles.note}>
+          Showing <b>{rows.length}</b> unique items (measurements removed).
         </div>
       </div>
     </div>
@@ -549,4 +591,6 @@ const styles = {
     fontWeight: 800,
     cursor: "pointer",
   },
+
+  note: { marginTop: 10, color: "#bdbdbd", fontSize: 12 },
 };

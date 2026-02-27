@@ -21,7 +21,6 @@ export default function App() {
 
       // used by ExtractTab.jsx
       setExtractedPreview: (preview) => setExtractedPreview(preview),
-
       clearPreview: () => setExtractedPreview(null),
 
       // used by AllPioneerTab.jsx (Edit → Save)
@@ -40,7 +39,7 @@ export default function App() {
         );
       },
 
-      // + Add button (insert a blank row at TOP of FIRST record)
+      // + Add row at TOP of the FIRST record
       addSavedItemRowTop: () => {
         setSavedItems((prev) => {
           if (!prev.length) return prev;
@@ -55,9 +54,10 @@ export default function App() {
             grossWeight: null,
             fileName: first.fileName || "",
 
-            // ✅ NEW: keep same PRO/SOI for new rows under this record
+            // ✅ keep same header info for that record
             proNumber: first.proNumber || "",
             soiNumber: first.soiNumber || "",
+            destination: first.destination || "",
 
             hsCode: "",
             dgStatus: "",
@@ -141,14 +141,13 @@ export default function App() {
         });
       },
 
-      // ✅ IMPORTANT: when saving, automatically add extra DG columns to every item
-      // ✅ ALSO IMPORTANT: persist PRO/SOI from extractedPreview into savedItems
+      // ✅ Save extracted preview into savedItems (includes PRO/SOI/Destination + DG fields)
       proceedSaveExtracted: () => {
         if (!extractedPreview) return;
 
         const defaultDGFields = {
           hsCode: "",
-          dgStatus: "", // DG / Non-DG
+          dgStatus: "",
           unNumber: "",
           classNumber: "",
           packingGroup: "",
@@ -156,24 +155,27 @@ export default function App() {
           properShippingName: "",
           technicalName: "",
           ems: "",
-          marinePollutant: "", // Yes / No
+          marinePollutant: "",
           innerType: "",
           outerType: "",
         };
 
-        // ✅ NEW: capture PRO/SOI once (from ExtractTab preview)
-        const proNumber = (extractedPreview.proNumber || "").trim();
-        const soiNumber = (extractedPreview.soiNumber || "").trim();
-        const destination = (extractedPreview.destination || "").trim();
+        // ✅ read header fields from preview
+        const proNumber = (extractedPreview.proNumber || "").toString().trim();
+        const soiNumber = (extractedPreview.soiNumber || "").toString().trim();
+        const destination = (extractedPreview.destination || "")
+          .toString()
+          .trim();
 
-        // Add DG + PRO/SOI fields to every extracted item if not present yet
+        // ✅ normalize items to ensure DG + pro/soi/destination exist on every row
         const normalizedItems = (extractedPreview.items || []).map((it) => ({
           ...defaultDGFields,
           ...it,
-          fileName: it.fileName ?? extractedPreview.fileName,
+          fileName: it.fileName ?? extractedPreview.fileName ?? "",
+
           proNumber: (it.proNumber ?? proNumber) || "",
           soiNumber: (it.soiNumber ?? soiNumber) || "",
-          destination: (it.destination ?? destination) || "", // ✅ NEW
+          destination: (it.destination ?? destination) || "",
         }));
 
         const record = {
@@ -181,22 +183,39 @@ export default function App() {
           fileName: extractedPreview.fileName,
           addedAt: new Date().toISOString(),
 
-          // ✅ NEW: store also at record level (useful for defaults)
+          // ✅ store at record level too (used by PerSoPro grouping)
           proNumber,
           soiNumber,
           destination,
 
           extractedItems: normalizedItems,
           numberOfItemsExtracted:
-            extractedPreview.numberOfItemsExtracted ??
-            (extractedPreview.items?.length || 0),
+            extractedPreview.numberOfItemsExtracted ?? normalizedItems.length,
         };
 
         setSavedItems((prev) => [record, ...prev]);
 
-        // reset
+        // reset after save
         setExtractedPreview(null);
         setSelectedFile(null);
+      },
+
+      // ✅ DELETE: removes the whole block (all records matching PRO+SOI+Destination)
+      deletePerSoProGroup: ({ proNumber, soiNumber, destination }) => {
+        const pro = (proNumber || "").toString().trim() || "—";
+        const soi = (soiNumber || "").toString().trim() || "—";
+        const dest = (destination || "").toString().trim() || "—";
+
+        setSavedItems((prev) =>
+          prev.filter((rec) => {
+            const recPro = (rec.proNumber || "").toString().trim() || "—";
+            const recSoi = (rec.soiNumber || "").toString().trim() || "—";
+            const recDest = (rec.destination || "").toString().trim() || "—";
+
+            const match = recPro === pro && recSoi === soi && recDest === dest;
+            return !match; // keep only non-matching records
+          }),
+        );
       },
 
       // optional helper
