@@ -164,16 +164,16 @@ export default function App() {
         // ✅ NEW: capture PRO/SOI once (from ExtractTab preview)
         const proNumber = (extractedPreview.proNumber || "").trim();
         const soiNumber = (extractedPreview.soiNumber || "").trim();
+        const destination = (extractedPreview.destination || "").trim();
 
         // Add DG + PRO/SOI fields to every extracted item if not present yet
         const normalizedItems = (extractedPreview.items || []).map((it) => ({
           ...defaultDGFields,
           ...it,
-          // ✅ ensure fileName exists
           fileName: it.fileName ?? extractedPreview.fileName,
-          // ✅ ensure pro/soi exists on each row
           proNumber: (it.proNumber ?? proNumber) || "",
           soiNumber: (it.soiNumber ?? soiNumber) || "",
+          destination: (it.destination ?? destination) || "", // ✅ NEW
         }));
 
         const record = {
@@ -184,6 +184,7 @@ export default function App() {
           // ✅ NEW: store also at record level (useful for defaults)
           proNumber,
           soiNumber,
+          destination,
 
           extractedItems: normalizedItems,
           numberOfItemsExtracted:

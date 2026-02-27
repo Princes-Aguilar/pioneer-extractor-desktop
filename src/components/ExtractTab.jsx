@@ -1,12 +1,22 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 export default function ExtractTab({ store, actions }) {
   const [isWorking, setIsWorking] = useState(false);
   const [error, setError] = useState("");
 
-  // ✅ NEW: required inputs
+  // ✅ Required inputs
+  const [destination, setDestination] = useState("");
   const [proNumber, setProNumber] = useState("");
   const [soiNumber, setSoiNumber] = useState("");
+
+  useEffect(() => {
+    // When preview is cleared after save → reset inputs
+    if (!store.extractedPreview) {
+      setDestination("");
+      setProNumber("");
+      setSoiNumber("");
+    }
+  }, [store.extractedPreview]);
 
   const pickWithDialog = async () => {
     try {
@@ -29,12 +39,13 @@ export default function ExtractTab({ store, actions }) {
       setIsWorking(true);
 
       // ✅ NEW: validate required fields first
+      const dest = destination.trim();
       const pro = proNumber.trim();
       const soi = soiNumber.trim();
 
-      if (!pro || !soi) {
+      if (!dest) throw new Error("Destination is required.");
+      if (!pro || !soi)
         throw new Error("PRO Number and SOI Number are required.");
-      }
 
       const f = store.selectedFile;
       if (!f?.path)
@@ -49,18 +60,14 @@ export default function ExtractTab({ store, actions }) {
       const res = await window.pioneer.extractPdf(f.path);
       if (!res?.ok) throw new Error(res?.error || "Extraction failed.");
 
-      if (typeof actions.setExtractedPreview !== "function") {
-        throw new Error(
-          "actions.setExtractedPreview is not a function. Add it inside App.jsx actions.",
-        );
-      }
-
-      // ✅ Pass PRO/SOI into preview so it’s available on Proceed (Save)
+      // ✅ save into preview so it can be passed later on Proceed(Save)
       actions.setExtractedPreview({
         fileName: res.fileName,
         numberOfItemsExtracted: res.numberOfItemsExtracted,
         items: res.items || [],
         debug: res.debug,
+
+        destination: dest, // ✅ NEW
         proNumber: pro,
         soiNumber: soi,
       });
@@ -71,11 +78,12 @@ export default function ExtractTab({ store, actions }) {
     }
   };
 
+  const destOk = destination.trim().length > 0;
   const proOk = proNumber.trim().length > 0;
   const soiOk = soiNumber.trim().length > 0;
   const fileOk = !!store.selectedFile?.path;
 
-  const canSubmit = proOk && soiOk && fileOk && !isWorking;
+  const canSubmit = destOk && proOk && soiOk && fileOk && !isWorking;
 
   return (
     <div style={styles.wrap}>
@@ -87,8 +95,16 @@ export default function ExtractTab({ store, actions }) {
           </p>
         </div>
 
-        {/* ✅ NEW: Inputs beside Choose PDF */}
+        {/* ✅ NEW: Destination + PRO + SOI left of Choose PDF */}
         <div style={styles.headRight}>
+          <input
+            style={styles.input}
+            type="text"
+            placeholder="Destination (required)"
+            value={destination}
+            onChange={(e) => setDestination(e.target.value)}
+          />
+
           <input
             style={styles.input}
             type="text"
@@ -96,6 +112,7 @@ export default function ExtractTab({ store, actions }) {
             value={proNumber}
             onChange={(e) => setProNumber(e.target.value)}
           />
+
           <input
             style={styles.input}
             type="text"
@@ -103,6 +120,7 @@ export default function ExtractTab({ store, actions }) {
             value={soiNumber}
             onChange={(e) => setSoiNumber(e.target.value)}
           />
+
           <button style={styles.ghostBtn} onClick={pickWithDialog}>
             Choose PDF
           </button>
@@ -130,13 +148,15 @@ export default function ExtractTab({ store, actions }) {
           disabled={!canSubmit}
           onClick={submitAndExtract}
           title={
-            !proOk || !soiOk
-              ? "PRO Number and SOI Number are required"
-              : !fileOk
-                ? "Please choose a PDF"
-                : isWorking
-                  ? "Working..."
-                  : "Submit"
+            !destOk
+              ? "Destination is required"
+              : !proOk || !soiOk
+                ? "PRO Number and SOI Number are required"
+                : !fileOk
+                  ? "Please choose a PDF"
+                  : isWorking
+                    ? "Working..."
+                    : "Submit"
           }
         >
           {isWorking ? "Extracting..." : "Submit (Extract)"}
@@ -144,11 +164,10 @@ export default function ExtractTab({ store, actions }) {
 
         {error ? <div style={styles.errorBox}>{error}</div> : null}
 
-        {/* Small helper hint (optional) */}
-        {!proOk || !soiOk ? (
+        {!destOk || !proOk || !soiOk ? (
           <div style={styles.hint}>
-            * Please enter <b>PRO Number</b> and <b>SOI Number</b> before
-            submitting.
+            * Please enter <b>Destination</b>, <b>PRO Number</b>, and{" "}
+            <b>SOI Number</b> before submitting.
           </div>
         ) : null}
       </div>
@@ -165,10 +184,13 @@ export default function ExtractTab({ store, actions }) {
                 </span>
               </div>
 
-              {/* ✅ NEW: show PRO/SOI during review */}
+              {/* ✅ NEW: show Destination + PRO/SOI */}
               <div style={styles.reviewMeta}>
-                PRO: <b>{store.extractedPreview.proNumber || "—"}</b> &nbsp;|&nbsp;
-                SOI: <b>{store.extractedPreview.soiNumber || "—"}</b>
+                Destination: <b>{store.extractedPreview.destination || "—"}</b>
+                &nbsp;|&nbsp; PRO:{" "}
+                <b>{store.extractedPreview.proNumber || "—"}</b>
+                &nbsp;|&nbsp; SOI:{" "}
+                <b>{store.extractedPreview.soiNumber || "—"}</b>
               </div>
             </div>
 
@@ -260,7 +282,7 @@ const styles = {
     color: "#fff",
     borderRadius: 10,
     outline: "none",
-    minWidth: 190,
+    minWidth: 200,
   },
 
   card: {
