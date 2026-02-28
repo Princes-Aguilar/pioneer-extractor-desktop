@@ -4,6 +4,45 @@ export default function AllPioneerTab({ store, actions }) {
   const [editingKey, setEditingKey] = useState(null);
   const [draft, setDraft] = useState(null);
 
+  const handleAdd = () => {
+    if (!store.savedItems?.length) {
+      alert("No saved records yet. Extract and Save first.");
+      return;
+    }
+    if (!actions?.addSavedItemRowTop) {
+      alert("addSavedItemRowTop action is missing in App.jsx.");
+      return;
+    }
+
+    actions.addSavedItemRowTop();
+
+    // open edit mode for the newly inserted top row (record 0, item 0)
+    const recordId = store.savedItems[0].id;
+    const rowKey = `${recordId}::0`;
+
+    setEditingKey(rowKey);
+    setDraft({
+      rowKey,
+      recordId,
+      itemIndex: 0,
+      description: "",
+      fileName: "",
+
+      hsCode: "",
+      dgStatus: "",
+      unNumber: "",
+      classNumber: "",
+      packingGroup: "",
+      flashPoint: "",
+      properShippingName: "",
+      technicalName: "",
+      ems: "",
+      marinePollutant: "",
+      innerType: "",
+      outerType: "",
+    });
+  };
+
   // -----------------------------
   // Helpers: normalize + clean description
   // -----------------------------
@@ -129,7 +168,8 @@ export default function AllPioneerTab({ store, actions }) {
         const finalClean =
           descClean || normSpaces(rawDesc).toUpperCase() || "—";
 
-        const key = makeKey(finalClean);
+        const isBlank = !normSpaces(rawDesc);
+        const key = isBlank ? `__NEW__${rec.id}::${i}` : makeKey(finalClean);
         if (seen.has(key)) continue;
         seen.add(key);
 
@@ -235,6 +275,9 @@ export default function AllPioneerTab({ store, actions }) {
             Unique items only (measurements removed). Edit any row.
           </p>
         </div>
+        <button style={styles.ghostBtn} onClick={handleAdd}>
+          + Add
+        </button>
       </div>
 
       <div style={styles.card}>
