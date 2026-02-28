@@ -137,6 +137,121 @@ function runPythonJson(pythonCmd, scriptPath, args) {
   });
 }
 
+ipcMain.handle("generate-dgdec", async (_event, payload) => {
+  try {
+    const pythonCmd = process.platform === "win32" ? "python" : "python3";
+    const projectRoot = app.getAppPath();
+
+    const templatePath = path.join(
+      projectRoot,
+      "python",
+      "templates",
+      "KMTC_DG_Template.xlsx",
+    );
+
+    if (!fs.existsSync(templatePath)) {
+      return { ok: false, error: `Template not found: ${templatePath}` };
+    }
+
+    const outDir = path.join(app.getPath("downloads"), "pioneer-dgdec");
+    fs.mkdirSync(outDir, { recursive: true });
+
+    const pro = String(payload?.proNumber || "").trim() || "PRO";
+    const soi = String(payload?.soiNumber || "").trim() || "SOI";
+    const dest = String(payload?.destination || "").trim() || "DEST";
+
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    const clean = items.filter((x) => x && typeof x === "object");
+
+    if (clean.length === 0) {
+      return { ok: false, error: "No valid items received for DG Dec." };
+    }
+
+    // ✅ Filter to DG items only (prevents generating files for non-DG rows)
+    const dgOnly = clean.filter((it) => {
+      const v = String(it?.dgStatus || "")
+        .trim()
+        .toUpperCase();
+      return v === "DG" || v === "YES" || v === "Y" || v === "TRUE";
+    });
+
+    if (dgOnly.length === 0) {
+      return { ok: false, error: "No DG items found (dgStatus not DG/YES)." };
+    }
+    // Python script that writes ONE file given ONE chosen item in payload.items
+    const scriptPath = path.join(
+      projectRoot,
+      "python",
+      "generate_dgdec_excel_cli.py",
+    );
+
+    const generatedFiles = [];
+
+    for (let i = 0; i < dgOnly.length; i++) {
+      const it = dgOnly[i];
+
+      // ✅ 1. GET DESCRIPTION FIELD
+      const descRaw = String(
+        it.description || it.productName || it.properShippingName || "",
+      ).trim();
+
+      // ✅ 2. CLEAN DESCRIPTION FOR WINDOWS FILENAME
+      const descSafe = descRaw
+        .replace(/\s+/g, "_")
+        .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+        .slice(0, 40); // limit length
+
+      const un = String(it.unNumber || "").replace(/\s+/g, "") || `UN${i + 1}`;
+      const cls = String(it.classNumber || "").replace(/\s+/g, "") || `CLASS`;
+
+      // ✅ 3. ADD DESCRIPTION INTO FILENAME
+      const safeName =
+        `${pro}_${soi}_${dest}_${un}_${cls}_${descSafe || "NO_DESC"}_${i + 1}`
+          .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
+          .slice(0, 180);
+
+      const outPath = path.join(outDir, `${safeName}.xlsx`);
+
+      // Write payload json to temp so CLI can read it
+      const tempJson = path.join(outDir, `payload_${Date.now()}_${i}.json`);
+      fs.writeFileSync(
+        tempJson,
+        JSON.stringify({ ...payload, items: [it] }, null, 2),
+        "utf-8",
+      );
+
+      // Run python CLI: python generate_dgdec_excel_cli.py template out payload.json
+      await new Promise((resolve, reject) => {
+        const proc = spawn(
+          pythonCmd,
+          [scriptPath, templatePath, outPath, tempJson],
+          {
+            windowsHide: true,
+          },
+        );
+
+        let err = "";
+        proc.stderr.on("data", (d) => (err += d.toString()));
+
+        proc.on("close", (code) => {
+          try {
+            fs.unlinkSync(tempJson);
+          } catch {}
+          if (code !== 0)
+            return reject(new Error(err || `Python failed. code=${code}`));
+          resolve();
+        });
+      });
+
+      generatedFiles.push(outPath);
+    }
+
+    return { ok: true, generatedFiles, count: generatedFiles.length, outDir };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
 function runPython(pythonCmd, scriptPath, args) {
   return new Promise((resolve, reject) => {
     const proc = spawn(pythonCmd, [scriptPath, ...args], { windowsHide: true });

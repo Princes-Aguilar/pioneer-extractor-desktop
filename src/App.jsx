@@ -83,6 +83,34 @@ export default function App() {
         });
       },
 
+      generateDGDec: async ({
+        proNumber,
+        soiNumber,
+        destination,
+        item,
+        items,
+      }) => {
+        // Allow either item (single) or items (array)
+        const list = Array.isArray(items) ? items : item ? [item] : [];
+
+        // Remove null/undefined and require object
+        const clean = list.filter((x) => x && typeof x === "object");
+
+        if (clean.length === 0) {
+          throw new Error("No valid DG items to generate.");
+        }
+
+        const res = await window.pioneer.generateDGDec({
+          proNumber,
+          soiNumber,
+          destination,
+          items: clean,
+        });
+
+        if (!res?.ok)
+          throw new Error(res?.error || "DG Dec generation failed.");
+        return res;
+      },
       // Optional: if you still use XLSX
       extractSelectedXlsx: async () => {
         if (!selectedFile) throw new Error("No file selected.");

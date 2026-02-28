@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from "react";
 
 export default function AutoDocsGenTab({ store, actions }) {
-  const [workingKey, setWorkingKey] = useState(null);
+  const [selectedKey, setSelectedKey] = useState(null);
+  const [docMenuOpen, setDocMenuOpen] = useState(false);
+  const [working, setWorking] = useState(null); // string key
 
-  // Build groups like PER SO / PER PRO (PRO + SOI + Destination)
   const groups = useMemo(() => {
     const map = new Map();
     const saved = store?.savedItems || [];
@@ -21,7 +22,6 @@ export default function AutoDocsGenTab({ store, actions }) {
           (recDest || (it?.destination ?? "")).toString().trim() || "—";
 
         const key = `${pro}||${soi}||${dest}`;
-
         if (!map.has(key)) {
           map.set(key, {
             key,
@@ -51,112 +51,264 @@ export default function AutoDocsGenTab({ store, actions }) {
     );
   }, [store?.savedItems]);
 
-  const hasGenerator =
-    typeof actions?.generateDGDec === "function" ||
-    typeof actions?.generatePreadvise === "function";
+  const selectedGroup = useMemo(() => {
+    if (!selectedKey) return null;
+    return groups.find((g) => g.key === selectedKey) || null;
+  }, [groups, selectedKey]);
 
-  const handleGenerate = async (type, g) => {
-    // If you haven't wired real generation yet, we still show a friendly message.
-    const fn =
-      type === "dg" ? actions?.generateDGDec : actions?.generatePreadvise;
-
+  const run = async (label, fn, payload) => {
     if (typeof fn !== "function") {
-      alert(
-        `No generator yet.\n\nNext step: add actions.${
-          type === "dg" ? "generateDGDec" : "generatePreadvise"
-        } in App.jsx to create the document.`,
-      );
+      alert(`Action missing: ${label}\nAdd it in App.jsx actions.`);
       return;
     }
-
     try {
-      setWorkingKey(`${g.key}::${type}`);
-      await fn({
-        proNumber: g.proNumber,
-        soiNumber: g.soiNumber,
-        destination: g.destination,
-        items: g.rows,
-      });
+      setWorking(label);
+      await fn(payload);
     } catch (e) {
       alert(e?.message || String(e));
     } finally {
-      setWorkingKey(null);
+      setWorking(null);
     }
   };
 
+  // ----------------------------
+  // VIEW A: Overview blocks
+  // ----------------------------
+  if (!selectedGroup) {
+    return (
+      <div style={styles.wrap}>
+        <div style={styles.head}>
+          <div>
+            <h3 style={styles.h3}>Automatic Docs Generation</h3>
+            <p style={styles.p}>
+              Click a block to view items. Or generate Pre-advise directly from
+              a block.
+            </p>
+          </div>
+          <div style={styles.counter}>
+            Groups: <b>{groups.length}</b>
+          </div>
+        </div>
+
+        <div style={styles.list}>
+          {groups.length === 0 ? (
+            <div style={styles.empty}>
+              No saved items yet. Extract a PDF then click <b>Proceed (Save)</b>
+              .
+            </div>
+          ) : (
+            groups.map((g) => {
+              const dgCount = (g.rows || []).filter((it) => {
+                const v = String(it.dgStatus || "")
+                  .trim()
+                  .toUpperCase();
+                return v === "DG" || v === "YES";
+              }).length;
+
+              return (
+                <div key={g.key} style={styles.row}>
+                  {/* Clickable block */}
+                  <button
+                    style={styles.blockBtn}
+                    onClick={() => setSelectedKey(g.key)}
+                    title="Open items"
+                  >
+                    <div style={styles.line}>
+                      <span style={styles.label}>pro number:</span>{" "}
+                      <b>{g.proNumber}</b>
+                      <span style={{ marginLeft: 14 }} />
+                      <span style={styles.label}>soi number:</span>{" "}
+                      <b>{g.soiNumber}</b>
+                    </div>
+
+                    <div style={styles.meta}>
+                      <span style={styles.label}>destination:</span>{" "}
+                      <b>{g.destination}</b>
+                      <span style={{ marginLeft: 14 }} />
+                      <span style={styles.label}>items:</span>{" "}
+                      <b>{g.rows.length}</b>
+                      <span style={{ marginLeft: 14 }} />
+                      <span style={styles.label}>DG items:</span>{" "}
+                      <b>{dgCount}</b>
+                    </div>
+                  </button>
+
+                  <button
+                    style={styles.primaryBtn}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // your preadvise logic
+                    }}
+                  >
+                    Generate Pre-advise
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ----------------------------
+  // VIEW B: Selected block details + doc chooser
+  // ----------------------------
   return (
     <div style={styles.wrap}>
       <div style={styles.head}>
         <div>
           <h3 style={styles.h3}>Automatic Docs Generation</h3>
-          <p style={styles.p}>
-            Select a PRO/SOI block and generate documents from extracted items.
-          </p>
-        </div>
-
-        <div style={styles.counter}>
-          Groups: <b>{groups.length}</b>
-        </div>
-      </div>
-
-      {!hasGenerator ? (
-        <div style={styles.notice}>
-          Buttons work, but document generation is not wired yet.
-          <br />
-          Next: add <b>actions.generateDGDec</b> and{" "}
-          <b>actions.generatePreadvise</b> in <b>App.jsx</b>.
-        </div>
-      ) : null}
-
-      <div style={styles.list}>
-        {groups.length === 0 ? (
-          <div style={styles.empty}>
-            No saved items yet. Extract a PDF and click <b>Proceed (Save)</b>.
+          <div style={styles.title2}>
+            pro: <b>{selectedGroup.proNumber}</b> &nbsp;|&nbsp; soi:{" "}
+            <b>{selectedGroup.soiNumber}</b> &nbsp;|&nbsp; destination:{" "}
+            <b>{selectedGroup.destination}</b> &nbsp;|&nbsp; items:{" "}
+            <b>{selectedGroup.rows.length}</b>
           </div>
-        ) : (
-          groups.map((g) => (
-            <div key={g.key} style={styles.row}>
-              <div style={styles.block}>
-                <div style={styles.line}>
-                  <span style={styles.label}>pro number:</span>{" "}
-                  <b>{g.proNumber}</b>
-                  <span style={{ marginLeft: 14 }} />
-                  <span style={styles.label}>soi number:</span>{" "}
-                  <b>{g.soiNumber}</b>
-                </div>
-                <div style={styles.meta}>
-                  <span style={styles.label}>destination:</span>{" "}
-                  <b>{g.destination}</b>
-                  <span style={{ marginLeft: 14 }} />
-                  <span style={styles.label}>items:</span>{" "}
-                  <b>{g.rows.length}</b>
-                </div>
-              </div>
+        </div>
 
-              <div style={styles.btnCol}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <button
+            style={styles.ghostBtn}
+            onClick={async () => {
+              setDocMenuOpen(false);
+              setSelectedKey(null);
+
+              const dgItems = (selectedGroup.rows || []).filter((it) => {
+                const v = String(it.dgStatus || "")
+                  .trim()
+                  .toUpperCase();
+                return v === "DG" || v === "YES" || v === "Y" || v === "TRUE";
+              });
+
+              if (dgItems.length === 0) {
+                alert("No DG items found in this PRO/SOI group.");
+                return;
+              }
+              console.log(
+                "DG count:",
+                dgItems.length,
+                dgItems.map((x) => x.unNumber),
+              );
+
+              run(`dg:${selectedGroup.key}`, actions?.generateDGDec, {
+                proNumber: selectedGroup.proNumber,
+                soiNumber: selectedGroup.soiNumber,
+                destination: selectedGroup.destination,
+                items: dgItems,
+              });
+
+              if (dgItems.length === 0) {
+                alert("No DG items found in this block.");
+                return;
+              }
+
+              try {
+                setWorking(`dg:${selectedGroup.key}`);
+
+                for (let i = 0; i < dgItems.length; i++) {
+                  const item = dgItems[i];
+
+                  await actions.generateDGDec({
+                    proNumber: selectedGroup.proNumber,
+                    soiNumber: selectedGroup.soiNumber,
+                    destination: selectedGroup.destination,
+                    item,
+                  });
+                }
+
+                alert(
+                  `Done! Generated DG Dec for ${dgItems.length} DG item(s).`,
+                );
+              } catch (e) {
+                alert(e?.message || String(e));
+              } finally {
+                setWorking(null);
+              }
+            }}
+          >
+            ← Back
+          </button>
+
+          <div style={{ position: "relative" }}>
+            <button
+              style={styles.primaryBtn}
+              onClick={() => setDocMenuOpen((v) => !v)}
+              disabled={!!working}
+            >
+              Generate Document
+            </button>
+
+            {docMenuOpen && (
+              <div style={styles.menu}>
                 <button
-                  style={styles.primaryBtn}
-                  onClick={() => handleGenerate("dg", g)}
-                  disabled={workingKey === `${g.key}::dg`}
+                  style={styles.menuItem}
+                  disabled={working === `dg:${selectedGroup.key}`}
+                  onClick={() => {
+                    setDocMenuOpen(false);
+                    run(`dg:${selectedGroup.key}`, actions?.generateDGDec, {
+                      proNumber: selectedGroup.proNumber,
+                      soiNumber: selectedGroup.soiNumber,
+                      destination: selectedGroup.destination,
+                      items: selectedGroup.rows,
+                    });
+                  }}
                 >
-                  {workingKey === `${g.key}::dg`
+                  {working === `dg:${selectedGroup.key}`
                     ? "Generating..."
                     : "Generate DG Dec"}
                 </button>
 
-                <button
-                  style={styles.ghostBtn}
-                  onClick={() => handleGenerate("preadvise", g)}
-                  disabled={workingKey === `${g.key}::preadvise`}
-                >
-                  {workingKey === `${g.key}::preadvise`
-                    ? "Generating..."
-                    : "Generate Preadvise"}
-                </button>
+                {/* Later: add more docs here */}
+                {/* <button style={styles.menuItem}>Generate Something Else</button> */}
               </div>
-            </div>
-          ))
-        )}
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div style={styles.card}>
+        <div style={{ overflowX: "auto" }}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Description</th>
+                <th style={styles.th}>Qty</th>
+                <th style={styles.th}>Boxes</th>
+                <th style={styles.th}>Net Wt</th>
+                <th style={styles.th}>Gross Wt</th>
+                <th style={styles.th}>File Name</th>
+                <th style={styles.th}>DG</th>
+                <th style={styles.th}>UN</th>
+                <th style={styles.th}>Class</th>
+                <th style={styles.th}>PG</th>
+                <th style={styles.th}>Flash Point</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectedGroup.rows.map((r, idx) => (
+                <tr key={idx}>
+                  <td style={styles.td}>{r.description || "—"}</td>
+                  <td style={styles.td}>{r.qty ?? "—"}</td>
+                  <td style={styles.td}>{r.noOfBoxes ?? "—"}</td>
+                  <td style={styles.td}>{r.netWeight ?? "—"}</td>
+                  <td style={styles.td}>{r.grossWeight ?? "—"}</td>
+                  <td style={styles.td}>{r.fileName || "—"}</td>
+                  <td style={styles.td}>{r.dgStatus || "—"}</td>
+                  <td style={styles.td}>{r.unNumber || "—"}</td>
+                  <td style={styles.td}>{r.classNumber || "—"}</td>
+                  <td style={styles.td}>{r.packingGroup || "—"}</td>
+                  <td style={styles.td}>{r.flashPoint || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={styles.note}>
+          Tip: You can edit DG fields in <b>All Pioneer Items</b> first, then
+          generate documents here.
+        </div>
       </div>
     </div>
   );
@@ -164,6 +316,7 @@ export default function AutoDocsGenTab({ store, actions }) {
 
 const styles = {
   wrap: { display: "flex", flexDirection: "column", gap: 14 },
+
   head: {
     display: "flex",
     alignItems: "flex-start",
@@ -173,6 +326,7 @@ const styles = {
   },
   h3: { margin: "0 0 6px 0", fontSize: 20 },
   p: { margin: "0 0 0 0", color: "#bdbdbd" },
+
   counter: {
     color: "#bdbdbd",
     fontSize: 12,
@@ -182,16 +336,25 @@ const styles = {
     background: "#101010",
   },
 
-  notice: {
-    padding: 14,
-    borderRadius: 12,
-    border: "1px dashed #2b2b2b",
+  list: { display: "flex", flexDirection: "column", gap: 12 },
+
+  row: { display: "flex", gap: 12, alignItems: "stretch", flexWrap: "wrap" },
+
+  blockBtn: {
+    flex: 1,
+    minWidth: 320,
+    textAlign: "left",
+    border: "1px solid #2b2b2b",
     background: "#0f0f0f",
-    color: "#bdbdbd",
-    lineHeight: 1.4,
+    color: "#fff",
+    borderRadius: 12,
+    padding: "14px 16px",
+    cursor: "pointer",
   },
 
-  list: { display: "flex", flexDirection: "column", gap: 12 },
+  line: { fontSize: 14 },
+  meta: { marginTop: 8, fontSize: 12, color: "#eaeaea" },
+  label: { color: "#cfcfcf" },
 
   empty: {
     padding: 18,
@@ -200,34 +363,36 @@ const styles = {
     color: "#bdbdbd",
   },
 
-  row: {
-    display: "flex",
-    gap: 12,
-    alignItems: "stretch",
-    flexWrap: "wrap",
-  },
+  title2: { marginTop: 6, color: "#eaeaea", fontSize: 13 },
 
-  block: {
-    flex: 1,
-    minWidth: 320,
-    padding: "14px 16px",
-    borderRadius: 12,
+  card: {
+    padding: 14,
     border: "1px solid #2b2b2b",
-    background: "#0f0f0f",
+    borderRadius: 12,
+    background: "#101010",
   },
 
-  line: { fontSize: 14, color: "#fff" },
-  meta: { marginTop: 8, fontSize: 12, color: "#eaeaea" },
-  label: { color: "#cfcfcf" },
-
-  btnCol: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    minWidth: 220,
+  table: { width: "100%", borderCollapse: "collapse" },
+  th: {
+    textAlign: "left",
+    padding: "10px 8px",
+    borderBottom: "1px solid #2b2b2b",
+    color: "#bdbdbd",
+    fontWeight: 800,
+    fontSize: 12,
+    whiteSpace: "nowrap",
   },
+  td: {
+    padding: "10px 8px",
+    borderBottom: "1px solid #1f1f1f",
+    whiteSpace: "nowrap",
+    fontSize: 12,
+  },
+
+  note: { marginTop: 10, color: "#bdbdbd", fontSize: 12 },
 
   primaryBtn: {
+    minWidth: 220,
     padding: "11px 12px",
     borderRadius: 12,
     border: "1px solid #fff",
@@ -245,5 +410,30 @@ const styles = {
     color: "#fff",
     fontWeight: 900,
     cursor: "pointer",
+  },
+
+  menu: {
+    position: "absolute",
+    right: 0,
+    top: "calc(100% + 8px)",
+    border: "1px solid #2b2b2b",
+    background: "#0f0f0f",
+    borderRadius: 12,
+    padding: 8,
+    minWidth: 220,
+    zIndex: 10,
+    boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+  },
+
+  menuItem: {
+    width: "100%",
+    textAlign: "left",
+    padding: "10px 10px",
+    borderRadius: 10,
+    border: "1px solid #2b2b2b",
+    background: "transparent",
+    color: "#fff",
+    cursor: "pointer",
+    fontWeight: 800,
   },
 };
