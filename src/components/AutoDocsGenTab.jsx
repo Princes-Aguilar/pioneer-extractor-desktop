@@ -133,14 +133,10 @@ export default function AutoDocsGenTab({ store, actions }) {
   function openPreadviseForGroup(g) {
     const rows = g?.rows || [];
     const cargoWeightKgs = computeCargoWeightKgs(rows);
+    const unnoImoClass = computeUnClassList(rows, { dgOnly: true });
 
-    // For UN/Class, you likely want DG items only. If you want ALL items, set dgOnly:false
-    <li>
-      UN &amp; Class: <b>{unClassList || "—"}</b>
-    </li>;
-    // Debug once:
     console.log("Pre-advise group:", g?.key);
-    console.log("Sample row keys:", rows[0] ? Object.keys(rows[0]) : []);
+    console.log("Rows:", rows.length);
     console.log("Computed cargoWeightKgs:", cargoWeightKgs);
     console.log("Computed UN/Class:", unnoImoClass);
 
@@ -212,24 +208,6 @@ export default function AutoDocsGenTab({ store, actions }) {
                       <b>{dgCount}</b>
                     </div>
                   </button>
-
-                  <button
-                    style={styles.primaryBtn}
-                    onClick={(e) => {
-                      e.stopPropagation(); // IMPORTANT (prevents parent click cancelling)
-                      setDocMenuOpen(false); // if inside a menu, close it
-                      setPreadviseGroup(g); // or selectedGroup, but MUST be a real group object
-                      setPreadviseOpen(true);
-
-                      console.log("PREADVISE CLICKED");
-                      console.log(
-                        "Group rows:",
-                        (g?.rows || selectedGroup?.rows || []).length,
-                      );
-                    }}
-                  >
-                    Generate Pre-advise
-                  </button>
                 </div>
               );
             })
@@ -293,7 +271,6 @@ export default function AutoDocsGenTab({ store, actions }) {
             >
               Generate Document
             </button>
-            console.log("Opening preadvise for", selectedGroup?.key);
             {docMenuOpen && (
               <div style={styles.menu}>
                 <button
@@ -328,9 +305,14 @@ export default function AutoDocsGenTab({ store, actions }) {
 
                 <button
                   style={styles.menuItem}
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setDocMenuOpen(false);
-                    openPreadviseForGroup(selectedGroup); // ✅ compute + open
+
+                    console.log("Opening preadvise for", selectedGroup?.key);
+
+                    // ✅ open properly (computes cargoWeightKgs + unnoImoClass and sets state)
+                    openPreadviseForGroup(selectedGroup);
                   }}
                 >
                   Generate Pre-advise
@@ -404,8 +386,15 @@ export default function AutoDocsGenTab({ store, actions }) {
 }
 
 const styles = {
-  wrap: { display: "flex", flexDirection: "column", gap: 14 },
+  // Page wrapper
+  wrap: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+    color: "#fff",
+  },
 
+  // Header row (title + group count / actions)
   head: {
     display: "flex",
     alignItems: "flex-start",
@@ -413,77 +402,76 @@ const styles = {
     gap: 12,
     flexWrap: "wrap",
   },
-  h3: { margin: "0 0 6px 0", fontSize: 20 },
-  p: { margin: "0 0 0 0", color: "#bdbdbd" },
+
+  h3: { margin: "0 0 6px 0", fontSize: 22, fontWeight: 900 },
+  p: { margin: 0, color: "#bdbdbd", fontSize: 13 },
 
   counter: {
-    color: "#bdbdbd",
+    color: "#d8d8d8",
     fontSize: 12,
     border: "1px solid #2b2b2b",
     borderRadius: 999,
     padding: "8px 12px",
-    background: "#101010",
+    background: "rgba(0,0,0,0.35)",
   },
 
+  // Overview list
   list: { display: "flex", flexDirection: "column", gap: 12 },
-
-  row: { display: "flex", gap: 12, alignItems: "stretch", flexWrap: "wrap" },
-
-  blockBtn: {
-    flex: 1,
-    minWidth: 320,
-    textAlign: "left",
-    border: "1px solid #2b2b2b",
-    background: "#0f0f0f",
-    color: "#fff",
-    borderRadius: 12,
-    padding: "14px 16px",
-    cursor: "pointer",
-  },
-
-  line: { fontSize: 14 },
-  meta: { marginTop: 8, fontSize: 12, color: "#eaeaea" },
-  label: { color: "#cfcfcf" },
 
   empty: {
     padding: 18,
-    borderRadius: 12,
+    borderRadius: 14,
     border: "1px dashed #2b2b2b",
     color: "#bdbdbd",
+    background: "rgba(0,0,0,0.25)",
   },
 
+  blockRow: {
+    display: "flex",
+    gap: 12,
+    alignItems: "stretch",
+  },
+
+  blockBtn: {
+    width: "100%",
+    textAlign: "left",
+    border: "1px solid #2b2b2b",
+    background: "rgba(0,0,0,0.35)",
+    color: "#fff",
+    borderRadius: 16,
+    padding: "16px 18px",
+    cursor: "pointer",
+    transition: "transform 0.05s ease",
+  },
+
+  blockLine: { fontSize: 14, color: "#ededed" },
+  blockLine2: { marginTop: 8, fontSize: 12, color: "#cfcfcf" },
+  label: { color: "#9f9f9f" },
+
+  // Selected view title line
   title2: { marginTop: 6, color: "#eaeaea", fontSize: 13 },
 
-  card: {
-    padding: 14,
-    border: "1px solid #2b2b2b",
+  // Top right actions row (Back + Generate Document)
+  actionsRow: {
+    display: "flex",
+    gap: 10,
+    alignItems: "center",
+  },
+
+  ghostBtn: {
+    padding: "11px 14px",
     borderRadius: 12,
-    background: "#101010",
-  },
-
-  table: { width: "100%", borderCollapse: "collapse" },
-  th: {
-    textAlign: "left",
-    padding: "10px 8px",
-    borderBottom: "1px solid #2b2b2b",
-    color: "#bdbdbd",
+    border: "1px solid #2b2b2b",
+    background: "rgba(0,0,0,0.25)",
+    color: "#fff",
     fontWeight: 800,
-    fontSize: 12,
-    whiteSpace: "nowrap",
+    cursor: "pointer",
   },
-  td: {
-    padding: "10px 8px",
-    borderBottom: "1px solid #1f1f1f",
-    whiteSpace: "nowrap",
-    fontSize: 12,
-  },
-
-  note: { marginTop: 10, color: "#bdbdbd", fontSize: 12 },
 
   primaryBtn: {
     minWidth: 220,
-    padding: "11px 12px",
-    borderRadius: 12,
+    padding: "11px 14px",
+    borderRadius: 14,
     border: "1px solid #fff",
     background: "#fff",
     color: "#000",
@@ -491,38 +479,79 @@ const styles = {
     cursor: "pointer",
   },
 
-  ghostBtn: {
-    padding: "11px 12px",
-    borderRadius: 12,
-    border: "1px solid #2b2b2b",
-    background: "transparent",
-    color: "#fff",
-    fontWeight: 900,
-    cursor: "pointer",
-  },
-
+  // Dropdown menu
   menu: {
     position: "absolute",
     right: 0,
     top: "calc(100% + 8px)",
-    border: "1px solid #2b2b2b",
     background: "#0f0f0f",
-    borderRadius: 12,
-    padding: 8,
-    minWidth: 220,
-    zIndex: 10,
-    boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+    border: "1px solid #2b2b2b",
+    borderRadius: 14,
+    padding: 10,
+    minWidth: 260,
+    zIndex: 999,
+    boxShadow: "0 12px 34px rgba(0,0,0,0.55)",
   },
 
   menuItem: {
     width: "100%",
     textAlign: "left",
-    padding: "10px 10px",
-    borderRadius: 10,
+    padding: "12px 12px",
+    borderRadius: 12,
     border: "1px solid #2b2b2b",
     background: "transparent",
     color: "#fff",
     cursor: "pointer",
-    fontWeight: 800,
+    fontWeight: 900,
+  },
+
+  menuItemSub: {
+    marginTop: 8,
+  },
+
+  // Card + table
+  card: {
+    padding: 14,
+    border: "1px solid #2b2b2b",
+    borderRadius: 16,
+    background: "rgba(0,0,0,0.35)",
+    overflow: "hidden",
+  },
+
+  tableWrap: {
+    width: "100%",
+    overflowX: "auto",
+    borderRadius: 14,
+  },
+
+  table: {
+    width: "100%",
+    borderCollapse: "collapse",
+    minWidth: 980, // keeps columns readable
+  },
+
+  th: {
+    textAlign: "left",
+    padding: "12px 10px",
+    borderBottom: "1px solid #2b2b2b",
+    color: "#bdbdbd",
+    fontWeight: 900,
+    fontSize: 12,
+    whiteSpace: "nowrap",
+    background: "rgba(0,0,0,0.25)",
+  },
+
+  td: {
+    padding: "12px 10px",
+    borderBottom: "1px solid rgba(255,255,255,0.06)",
+    whiteSpace: "nowrap",
+    fontSize: 12,
+    color: "#eaeaea",
+  },
+
+  note: {
+    marginTop: 10,
+    color: "#bdbdbd",
+    fontSize: 12,
   },
 };
