@@ -252,6 +252,72 @@ ipcMain.handle("generate-dgdec", async (_event, payload) => {
   }
 });
 
+ipcMain.handle("generate-preadvise", async (_event, payload) => {
+  try {
+    const pythonCmd = process.platform === "win32" ? "python" : "python3";
+    const projectRoot = app.getAppPath();
+
+    // IMPORTANT: convert your template to .docx (Word -> Save As -> .docx)
+    const templatePath = path.join(
+      projectRoot,
+      "python",
+      "templates",
+      "KMTC_PRE_ADVISE_TEMPLATE.docx",
+    );
+    if (!fs.existsSync(templatePath)) {
+      return {
+        ok: false,
+        error: `Pre-advise template not found: ${templatePath}`,
+      };
+    }
+
+    const outDir = path.join(app.getPath("downloads"), "pioneer-preadvise");
+    fs.mkdirSync(outDir, { recursive: true });
+
+    const pro = String(payload?.proNumber || "").trim() || "PRO";
+    const soi = String(payload?.soiNumber || "").trim() || "SOI";
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const time = now.toTimeString().slice(0, 8).replace(/:/g, "-");
+
+    const safeName = `${pro}_${soi}_PREADVISE_${today}_${time}`;
+
+    const outPath = path.join(outDir, `${safeName}.docx`);
+
+    const scriptPath = path.join(
+      projectRoot,
+      "python",
+      "generate_preadvise_docx_cli.py",
+    );
+
+    const tempJson = path.join(outDir, `preadvise_payload_${Date.now()}.json`);
+    fs.writeFileSync(tempJson, JSON.stringify(payload, null, 2), "utf-8");
+
+    await new Promise((resolve, reject) => {
+      const proc = spawn(
+        pythonCmd,
+        [scriptPath, templatePath, outPath, tempJson],
+        { windowsHide: true },
+      );
+
+      let err = "";
+      proc.stderr.on("data", (d) => (err += d.toString()));
+      proc.on("close", (code) => {
+        try {
+          fs.unlinkSync(tempJson);
+        } catch {}
+        if (code !== 0)
+          return reject(new Error(err || `Python failed. code=${code}`));
+        resolve();
+      });
+    });
+
+    return { ok: true, outPath, outDir };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
 function runPython(pythonCmd, scriptPath, args) {
   return new Promise((resolve, reject) => {
     const proc = spawn(pythonCmd, [scriptPath, ...args], { windowsHide: true });

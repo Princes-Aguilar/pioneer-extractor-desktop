@@ -111,6 +111,13 @@ export default function App() {
           throw new Error(res?.error || "DG Dec generation failed.");
         return res;
       },
+
+      generatePreadvise: async (payload) => {
+        const res = await window.pioneer.generatePreadvise(payload);
+        if (!res?.ok)
+          throw new Error(res?.error || "Pre-advise generation failed.");
+        return res;
+      },
       // Optional: if you still use XLSX
       extractSelectedXlsx: async () => {
         if (!selectedFile) throw new Error("No file selected.");

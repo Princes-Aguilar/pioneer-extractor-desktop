@@ -1,10 +1,69 @@
 import React, { useMemo, useState } from "react";
+import PreadviseModal from "./PreadviseModal";
+
+// ----------------------
+// Helpers
+// ----------------------
+function upper(s) {
+  return String(s || "")
+    .trim()
+    .toUpperCase();
+}
+
+function parseNumber(v) {
+  if (v == null) return 0;
+  const s = String(v).replace(/,/g, "").trim();
+  const m = s.match(/-?\d+(\.\d+)?/);
+  return m ? Number(m[0]) : 0;
+}
+
+function isDG(row) {
+  const v = upper(row?.dgStatus);
+  return v === "DG" || v === "YES" || v === "Y" || v === "TRUE";
+}
+
+function computeCargoWeightKgs(rows) {
+  // Your table shows r.grossWeight, so prioritize that first.
+  // If it’s empty, it tries other common keys too.
+  return (rows || []).reduce((sum, r) => {
+    const val =
+      r?.grossWeight ??
+      r?.grossWeightKgs ??
+      r?.grossweight ??
+      r?.gross_wt ??
+      r?.grossWt ??
+      r?.gw ??
+      r?.gross;
+    return sum + parseNumber(val);
+  }, 0);
+}
+
+function computeUnClassList(rows, { dgOnly = false } = {}) {
+  const list = dgOnly ? (rows || []).filter(isDG) : rows || [];
+  const set = new Set();
+
+  for (const r of list) {
+    const un = upper(r?.unNumber || r?.unNo || r?.unno || "");
+    const cls = upper(
+      r?.classNumber || r?.imoClass || r?.imcoClass || r?.class || "",
+    );
+    if (un || cls) set.add(`${un || "UN?"}/${cls || "CLASS?"}`);
+  }
+
+  return Array.from(set).join(", ");
+}
 
 export default function AutoDocsGenTab({ store, actions }) {
   const [selectedKey, setSelectedKey] = useState(null);
   const [docMenuOpen, setDocMenuOpen] = useState(false);
-  const [working, setWorking] = useState(null); // string key
+  const [working, setWorking] = useState(null);
 
+  const [preadviseOpen, setPreadviseOpen] = useState(false);
+  const [preadviseGroup, setPreadviseGroup] = useState(null);
+
+  // ----------------------
+  // Build groups (PRO+SOI+DEST)
+  // ----------------------
   const groups = useMemo(() => {
     const map = new Map();
     const saved = store?.savedItems || [];
@@ -71,6 +130,32 @@ export default function AutoDocsGenTab({ store, actions }) {
     }
   };
 
+  function openPreadviseForGroup(g) {
+    const rows = g?.rows || [];
+    const cargoWeightKgs = computeCargoWeightKgs(rows);
+
+    // For UN/Class, you likely want DG items only. If you want ALL items, set dgOnly:false
+    <li>
+      UN &amp; Class: <b>{unClassList || "—"}</b>
+    </li>;
+    // Debug once:
+    console.log("Pre-advise group:", g?.key);
+    console.log("Sample row keys:", rows[0] ? Object.keys(rows[0]) : []);
+    console.log("Computed cargoWeightKgs:", cargoWeightKgs);
+    console.log("Computed UN/Class:", unnoImoClass);
+
+    setPreadviseGroup({
+      ...g,
+      cargoWeightKgs,
+      unnoImoClass,
+    });
+    setPreadviseOpen(true);
+  }
+
+  function dgItemsOf(rows) {
+    return (rows || []).filter(isDG);
+  }
+
   // ----------------------------
   // VIEW A: Overview blocks
   // ----------------------------
@@ -98,12 +183,7 @@ export default function AutoDocsGenTab({ store, actions }) {
             </div>
           ) : (
             groups.map((g) => {
-              const dgCount = (g.rows || []).filter((it) => {
-                const v = String(it.dgStatus || "")
-                  .trim()
-                  .toUpperCase();
-                return v === "DG" || v === "YES";
-              }).length;
+              const dgCount = dgItemsOf(g.rows).length;
 
               return (
                 <div key={g.key} style={styles.row}>
@@ -136,8 +216,16 @@ export default function AutoDocsGenTab({ store, actions }) {
                   <button
                     style={styles.primaryBtn}
                     onClick={(e) => {
-                      e.stopPropagation();
-                      // your preadvise logic
+                      e.stopPropagation(); // IMPORTANT (prevents parent click cancelling)
+                      setDocMenuOpen(false); // if inside a menu, close it
+                      setPreadviseGroup(g); // or selectedGroup, but MUST be a real group object
+                      setPreadviseOpen(true);
+
+                      console.log("PREADVISE CLICKED");
+                      console.log(
+                        "Group rows:",
+                        (g?.rows || selectedGroup?.rows || []).length,
+                      );
                     }}
                   >
                     Generate Pre-advise
@@ -147,6 +235,21 @@ export default function AutoDocsGenTab({ store, actions }) {
             })
           )}
         </div>
+
+        {/* Modal */}
+        <PreadviseModal
+          open={preadviseOpen}
+          group={preadviseGroup}
+          onClose={() => setPreadviseOpen(false)}
+          onSubmit={(payload) => {
+            run(
+              `preadvise:${payload.proNumber}:${payload.soiNumber}`,
+              actions?.generatePreadvise,
+              payload,
+            );
+            setPreadviseOpen(false);
+          }}
+        />
       </div>
     );
   }
@@ -154,6 +257,8 @@ export default function AutoDocsGenTab({ store, actions }) {
   // ----------------------------
   // VIEW B: Selected block details + doc chooser
   // ----------------------------
+  const dgItems = dgItemsOf(selectedGroup.rows);
+
   return (
     <div style={styles.wrap}>
       <div style={styles.head}>
@@ -163,68 +268,18 @@ export default function AutoDocsGenTab({ store, actions }) {
             pro: <b>{selectedGroup.proNumber}</b> &nbsp;|&nbsp; soi:{" "}
             <b>{selectedGroup.soiNumber}</b> &nbsp;|&nbsp; destination:{" "}
             <b>{selectedGroup.destination}</b> &nbsp;|&nbsp; items:{" "}
-            <b>{selectedGroup.rows.length}</b>
+            <b>{selectedGroup.rows.length}</b> &nbsp;|&nbsp; DG items:{" "}
+            <b>{dgItems.length}</b>
           </div>
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <button
             style={styles.ghostBtn}
-            onClick={async () => {
+            onClick={() => {
+              // ✅ Back should ONLY go back
               setDocMenuOpen(false);
               setSelectedKey(null);
-
-              const dgItems = (selectedGroup.rows || []).filter((it) => {
-                const v = String(it.dgStatus || "")
-                  .trim()
-                  .toUpperCase();
-                return v === "DG" || v === "YES" || v === "Y" || v === "TRUE";
-              });
-
-              if (dgItems.length === 0) {
-                alert("No DG items found in this PRO/SOI group.");
-                return;
-              }
-              console.log(
-                "DG count:",
-                dgItems.length,
-                dgItems.map((x) => x.unNumber),
-              );
-
-              run(`dg:${selectedGroup.key}`, actions?.generateDGDec, {
-                proNumber: selectedGroup.proNumber,
-                soiNumber: selectedGroup.soiNumber,
-                destination: selectedGroup.destination,
-                items: dgItems,
-              });
-
-              if (dgItems.length === 0) {
-                alert("No DG items found in this block.");
-                return;
-              }
-
-              try {
-                setWorking(`dg:${selectedGroup.key}`);
-
-                for (let i = 0; i < dgItems.length; i++) {
-                  const item = dgItems[i];
-
-                  await actions.generateDGDec({
-                    proNumber: selectedGroup.proNumber,
-                    soiNumber: selectedGroup.soiNumber,
-                    destination: selectedGroup.destination,
-                    item,
-                  });
-                }
-
-                alert(
-                  `Done! Generated DG Dec for ${dgItems.length} DG item(s).`,
-                );
-              } catch (e) {
-                alert(e?.message || String(e));
-              } finally {
-                setWorking(null);
-              }
             }}
           >
             ← Back
@@ -238,7 +293,7 @@ export default function AutoDocsGenTab({ store, actions }) {
             >
               Generate Document
             </button>
-
+            console.log("Opening preadvise for", selectedGroup?.key);
             {docMenuOpen && (
               <div style={styles.menu}>
                 <button
@@ -246,11 +301,23 @@ export default function AutoDocsGenTab({ store, actions }) {
                   disabled={working === `dg:${selectedGroup.key}`}
                   onClick={() => {
                     setDocMenuOpen(false);
+
+                    if (dgItems.length === 0) {
+                      alert("No DG items found in this PRO/SOI group.");
+                      return;
+                    }
+
+                    console.log(
+                      "DG count:",
+                      dgItems.length,
+                      dgItems.map((x) => x.unNumber),
+                    );
+
                     run(`dg:${selectedGroup.key}`, actions?.generateDGDec, {
                       proNumber: selectedGroup.proNumber,
                       soiNumber: selectedGroup.soiNumber,
                       destination: selectedGroup.destination,
-                      items: selectedGroup.rows,
+                      items: dgItems, // ✅ DG only
                     });
                   }}
                 >
@@ -259,8 +326,15 @@ export default function AutoDocsGenTab({ store, actions }) {
                     : "Generate DG Dec"}
                 </button>
 
-                {/* Later: add more docs here */}
-                {/* <button style={styles.menuItem}>Generate Something Else</button> */}
+                <button
+                  style={styles.menuItem}
+                  onClick={() => {
+                    setDocMenuOpen(false);
+                    openPreadviseForGroup(selectedGroup); // ✅ compute + open
+                  }}
+                >
+                  Generate Pre-advise
+                </button>
               </div>
             )}
           </div>
@@ -310,6 +384,21 @@ export default function AutoDocsGenTab({ store, actions }) {
           generate documents here.
         </div>
       </div>
+
+      {/* Modal */}
+      <PreadviseModal
+        open={preadviseOpen}
+        group={preadviseGroup}
+        onClose={() => setPreadviseOpen(false)}
+        onSubmit={(payload) => {
+          run(
+            `preadvise:${payload.proNumber}:${payload.soiNumber}`,
+            actions?.generatePreadvise,
+            payload,
+          );
+          setPreadviseOpen(false);
+        }}
+      />
     </div>
   );
 }
