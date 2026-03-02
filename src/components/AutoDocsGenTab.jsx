@@ -23,8 +23,6 @@ function isDG(row) {
 }
 
 function computeCargoWeightKgs(rows) {
-  // Your table shows r.grossWeight, so prioritize that first.
-  // If it’s empty, it tries other common keys too.
   return (rows || []).reduce((sum, r) => {
     const val =
       r?.grossWeight ??
@@ -53,6 +51,25 @@ function computeUnClassList(rows, { dgOnly = false } = {}) {
   return Array.from(set).join(", ");
 }
 
+function MessageModal({ message, onClose }) {
+  if (!message) return null;
+  return (
+    <div style={styles.msgBackdrop} onMouseDown={onClose}>
+      <div style={styles.msgModal} onMouseDown={(e) => e.stopPropagation()}>
+        <div style={{ fontWeight: 900, marginBottom: 10 }}>Notice</div>
+        <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{message}</div>
+        <div
+          style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}
+        >
+          <button style={styles.msgBtn} onClick={onClose} type="button">
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AutoDocsGenTab({ store, actions }) {
   const [selectedKey, setSelectedKey] = useState(null);
   const [docMenuOpen, setDocMenuOpen] = useState(false);
@@ -60,6 +77,9 @@ export default function AutoDocsGenTab({ store, actions }) {
 
   const [preadviseOpen, setPreadviseOpen] = useState(false);
   const [preadviseGroup, setPreadviseGroup] = useState(null);
+
+  // ✅ replace alert()
+  const [uiMsg, setUiMsg] = useState(null);
 
   // ----------------------
   // Build groups (PRO+SOI+DEST)
@@ -117,14 +137,14 @@ export default function AutoDocsGenTab({ store, actions }) {
 
   const run = async (label, fn, payload) => {
     if (typeof fn !== "function") {
-      alert(`Action missing: ${label}\nAdd it in App.jsx actions.`);
+      setUiMsg(`Action missing: ${label}\nAdd it in App.jsx actions.`);
       return;
     }
     try {
       setWorking(label);
       await fn(payload);
     } catch (e) {
-      alert(e?.message || String(e));
+      setUiMsg(e?.message || String(e));
     } finally {
       setWorking(null);
     }
@@ -135,16 +155,7 @@ export default function AutoDocsGenTab({ store, actions }) {
     const cargoWeightKgs = computeCargoWeightKgs(rows);
     const unnoImoClass = computeUnClassList(rows, { dgOnly: true });
 
-    console.log("Pre-advise group:", g?.key);
-    console.log("Rows:", rows.length);
-    console.log("Computed cargoWeightKgs:", cargoWeightKgs);
-    console.log("Computed UN/Class:", unnoImoClass);
-
-    setPreadviseGroup({
-      ...g,
-      cargoWeightKgs,
-      unnoImoClass,
-    });
+    setPreadviseGroup({ ...g, cargoWeightKgs, unnoImoClass });
     setPreadviseOpen(true);
   }
 
@@ -158,6 +169,8 @@ export default function AutoDocsGenTab({ store, actions }) {
   if (!selectedGroup) {
     return (
       <div style={styles.wrap}>
+        <MessageModal message={uiMsg} onClose={() => setUiMsg(null)} />
+
         <div style={styles.head}>
           <div>
             <h3 style={styles.h3}>Automatic Docs Generation</h3>
@@ -183,7 +196,6 @@ export default function AutoDocsGenTab({ store, actions }) {
 
               return (
                 <div key={g.key} style={styles.row}>
-                  {/* Clickable block */}
                   <button
                     style={styles.blockBtn}
                     onClick={() => setSelectedKey(g.key)}
@@ -214,7 +226,6 @@ export default function AutoDocsGenTab({ store, actions }) {
           )}
         </div>
 
-        {/* Modal */}
         <PreadviseModal
           open={preadviseOpen}
           group={preadviseGroup}
@@ -239,6 +250,8 @@ export default function AutoDocsGenTab({ store, actions }) {
 
   return (
     <div style={styles.wrap}>
+      <MessageModal message={uiMsg} onClose={() => setUiMsg(null)} />
+
       <div style={styles.head}>
         <div>
           <h3 style={styles.h3}>Automatic Docs Generation</h3>
@@ -255,10 +268,10 @@ export default function AutoDocsGenTab({ store, actions }) {
           <button
             style={styles.ghostBtn}
             onClick={() => {
-              // ✅ Back should ONLY go back
               setDocMenuOpen(false);
               setSelectedKey(null);
             }}
+            type="button"
           >
             ← Back
           </button>
@@ -268,33 +281,31 @@ export default function AutoDocsGenTab({ store, actions }) {
               style={styles.primaryBtn}
               onClick={() => setDocMenuOpen((v) => !v)}
               disabled={!!working}
+              type="button"
             >
               Generate Document
             </button>
+
             {docMenuOpen && (
               <div style={styles.menu}>
                 <button
                   style={styles.menuItem}
                   disabled={working === `dg:${selectedGroup.key}`}
+                  type="button"
                   onClick={() => {
                     setDocMenuOpen(false);
 
+                    // ✅ no alert -> no focus bug
                     if (dgItems.length === 0) {
-                      alert("No DG items found in this PRO/SOI group.");
+                      setUiMsg("No DG items found in this PRO/SOI group.");
                       return;
                     }
-
-                    console.log(
-                      "DG count:",
-                      dgItems.length,
-                      dgItems.map((x) => x.unNumber),
-                    );
 
                     run(`dg:${selectedGroup.key}`, actions?.generateDGDec, {
                       proNumber: selectedGroup.proNumber,
                       soiNumber: selectedGroup.soiNumber,
                       destination: selectedGroup.destination,
-                      items: dgItems, // ✅ DG only
+                      items: dgItems,
                     });
                   }}
                 >
@@ -305,13 +316,10 @@ export default function AutoDocsGenTab({ store, actions }) {
 
                 <button
                   style={styles.menuItem}
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setDocMenuOpen(false);
-
-                    console.log("Opening preadvise for", selectedGroup?.key);
-
-                    // ✅ open properly (computes cargoWeightKgs + unnoImoClass and sets state)
                     openPreadviseForGroup(selectedGroup);
                   }}
                 >
@@ -367,7 +375,6 @@ export default function AutoDocsGenTab({ store, actions }) {
         </div>
       </div>
 
-      {/* Modal */}
       <PreadviseModal
         open={preadviseOpen}
         group={preadviseGroup}
@@ -386,15 +393,8 @@ export default function AutoDocsGenTab({ store, actions }) {
 }
 
 const styles = {
-  // Page wrapper
-  wrap: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 14,
-    color: "#fff",
-  },
+  wrap: { display: "flex", flexDirection: "column", gap: 14, color: "#fff" },
 
-  // Header row (title + group count / actions)
   head: {
     display: "flex",
     alignItems: "flex-start",
@@ -415,7 +415,6 @@ const styles = {
     background: "rgba(0,0,0,0.35)",
   },
 
-  // Overview list
   list: { display: "flex", flexDirection: "column", gap: 12 },
 
   empty: {
@@ -426,11 +425,7 @@ const styles = {
     background: "rgba(0,0,0,0.25)",
   },
 
-  blockRow: {
-    display: "flex",
-    gap: 12,
-    alignItems: "stretch",
-  },
+  row: { display: "flex" },
 
   blockBtn: {
     width: "100%",
@@ -444,19 +439,11 @@ const styles = {
     transition: "transform 0.05s ease",
   },
 
-  blockLine: { fontSize: 14, color: "#ededed" },
-  blockLine2: { marginTop: 8, fontSize: 12, color: "#cfcfcf" },
+  line: { fontSize: 14, color: "#ededed" },
+  meta: { marginTop: 8, fontSize: 12, color: "#cfcfcf" },
   label: { color: "#9f9f9f" },
 
-  // Selected view title line
   title2: { marginTop: 6, color: "#eaeaea", fontSize: 13 },
-
-  // Top right actions row (Back + Generate Document)
-  actionsRow: {
-    display: "flex",
-    gap: 10,
-    alignItems: "center",
-  },
 
   ghostBtn: {
     padding: "11px 14px",
@@ -479,7 +466,6 @@ const styles = {
     cursor: "pointer",
   },
 
-  // Dropdown menu
   menu: {
     position: "absolute",
     right: 0,
@@ -505,11 +491,6 @@ const styles = {
     fontWeight: 900,
   },
 
-  menuItemSub: {
-    marginTop: 8,
-  },
-
-  // Card + table
   card: {
     padding: 14,
     border: "1px solid #2b2b2b",
@@ -518,40 +499,49 @@ const styles = {
     overflow: "hidden",
   },
 
-  tableWrap: {
-    width: "100%",
-    overflowX: "auto",
-    borderRadius: 14,
-  },
-
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-    minWidth: 980, // keeps columns readable
-  },
-
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 12 },
   th: {
     textAlign: "left",
-    padding: "12px 10px",
     borderBottom: "1px solid #2b2b2b",
+    padding: "10px 8px",
     color: "#bdbdbd",
     fontWeight: 900,
-    fontSize: 12,
     whiteSpace: "nowrap",
-    background: "rgba(0,0,0,0.25)",
   },
-
   td: {
-    padding: "12px 10px",
-    borderBottom: "1px solid rgba(255,255,255,0.06)",
+    borderBottom: "1px solid #1f1f1f",
+    padding: "10px 8px",
     whiteSpace: "nowrap",
-    fontSize: 12,
-    color: "#eaeaea",
   },
 
-  note: {
-    marginTop: 10,
-    color: "#bdbdbd",
-    fontSize: 12,
+  note: { marginTop: 12, color: "#bdbdbd", fontSize: 12 },
+
+  // ✅ non-blocking replacement for alert()
+  msgBackdrop: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.55)",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10000,
+  },
+  msgModal: {
+    width: 520,
+    maxWidth: "92vw",
+    background: "#111",
+    border: "1px solid #2b2b2b",
+    borderRadius: 14,
+    padding: 16,
+    boxShadow: "0 10px 30px rgba(0,0,0,0.55)",
+  },
+  msgBtn: {
+    border: "1px solid #2b2b2b",
+    background: "#1a1a1a",
+    color: "#fff",
+    borderRadius: 10,
+    padding: "10px 14px",
+    cursor: "pointer",
+    fontWeight: 800,
   },
 };

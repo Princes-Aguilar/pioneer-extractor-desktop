@@ -1,5 +1,23 @@
 import React, { useMemo, useState } from "react";
 
+// ----------------------
+// Helpers
+// ----------------------
+function parseNumber(v) {
+  if (v == null) return 0;
+  const s = String(v).replace(/,/g, "").trim();
+  const m = s.match(/-?\d+(?:\.\d+)?/);
+  return m ? Number(m[0]) : 0;
+}
+
+function fmtWeight(v) {
+  const n = Number(v || 0);
+  return n.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 export default function PerSoProItemsTab({ store, actions }) {
   const [selectedKey, setSelectedKey] = useState(null);
 
@@ -24,7 +42,6 @@ export default function PerSoProItemsTab({ store, actions }) {
         const safeSoi = soi || "—";
         const safeDest = destination || "—";
 
-        // Group key includes destination (same as your current logic)
         const key = `${safePro}||${safeSoi}||${safeDest}`;
 
         if (!map.has(key)) {
@@ -34,16 +51,25 @@ export default function PerSoProItemsTab({ store, actions }) {
             soiNumber: safeSoi,
             destination: safeDest,
             rows: [],
+            totalGrossWeight: 0,
+            totalNetWeight: 0,
           });
         }
 
-        map.get(key).rows.push({
+        const row = {
           ...it,
           fileName: it?.fileName ?? rec?.fileName ?? "",
           proNumber: safePro,
           soiNumber: safeSoi,
           destination: safeDest,
-        });
+        };
+
+        const g = map.get(key);
+        g.rows.push(row);
+
+        // ✅ totals per PRO/SOI/Destination block
+        g.totalGrossWeight += parseNumber(row?.grossWeight);
+        g.totalNetWeight += parseNumber(row?.netWeight);
       }
     }
 
@@ -70,7 +96,9 @@ export default function PerSoProItemsTab({ store, actions }) {
     }
 
     const ok = window.confirm(
-      `Delete this group?\n\nPRO: ${g.proNumber}\nSOI: ${g.soiNumber}\nDestination: ${g.destination}\nItems: ${g.rows.length}\n\nThis cannot be undone.`,
+      `Delete this group?\n\nPRO: ${g.proNumber}\nSOI: ${g.soiNumber}\nDestination: ${g.destination}\nItems: ${g.rows.length}\nGross Total: ${fmtWeight(
+        g.totalGrossWeight,
+      )}\n\nThis cannot be undone.`,
     );
     if (!ok) return;
 
@@ -80,7 +108,6 @@ export default function PerSoProItemsTab({ store, actions }) {
       destination: g.destination,
     });
 
-    // if user is viewing this group, go back
     if (selectedKey === g.key) setSelectedKey(null);
   };
 
@@ -105,7 +132,6 @@ export default function PerSoProItemsTab({ store, actions }) {
           ) : (
             groups.map((g) => (
               <div key={g.key} style={styles.blockRow}>
-                {/* whole block is clickable */}
                 <button
                   style={styles.blockBtn}
                   onClick={() => setSelectedKey(g.key)}
@@ -125,14 +151,16 @@ export default function PerSoProItemsTab({ store, actions }) {
                     <span style={{ marginLeft: 14 }} />
                     <span style={styles.blockLabel}>items:</span>{" "}
                     <b>{g.rows.length}</b>
+                    <span style={{ marginLeft: 14 }} />
+                    <span style={styles.blockLabel}>gross total:</span>{" "}
+                    <b>{fmtWeight(g.totalGrossWeight)}</b>
                   </div>
                 </button>
 
-                {/* ✅ Delete button at end */}
                 <button
                   style={styles.deleteBtn}
                   onClick={(e) => {
-                    e.stopPropagation(); // don’t open details
+                    e.stopPropagation();
                     handleDeleteGroup(g);
                   }}
                   title="Delete this PRO/SOI group"
@@ -147,7 +175,7 @@ export default function PerSoProItemsTab({ store, actions }) {
     );
   }
 
-  // VIEW 2: Details table (unchanged, kept short)
+  // VIEW 2: Details
   return (
     <div style={styles.wrap}>
       <div style={styles.head}>
@@ -157,7 +185,8 @@ export default function PerSoProItemsTab({ store, actions }) {
             pro: <b>{selectedGroup.proNumber}</b> &nbsp;|&nbsp; soi:{" "}
             <b>{selectedGroup.soiNumber}</b> &nbsp;|&nbsp; destination:{" "}
             <b>{selectedGroup.destination}</b> &nbsp;|&nbsp; items:{" "}
-            <b>{selectedGroup.rows.length}</b>
+            <b>{selectedGroup.rows.length}</b> &nbsp;|&nbsp; gross total:{" "}
+            <b>{fmtWeight(selectedGroup.totalGrossWeight)}</b>
           </div>
         </div>
 
@@ -190,6 +219,20 @@ export default function PerSoProItemsTab({ store, actions }) {
                   <td style={styles.td}>{r.fileName || "—"}</td>
                 </tr>
               ))}
+
+              {/* ✅ Totals row */}
+              <tr>
+                <td style={{ ...styles.td, fontWeight: 900 }}>TOTAL</td>
+                <td style={styles.td} />
+                <td style={styles.td} />
+                <td style={{ ...styles.td, fontWeight: 900 }}>
+                  {fmtWeight(selectedGroup.totalNetWeight)}
+                </td>
+                <td style={{ ...styles.td, fontWeight: 900 }}>
+                  {fmtWeight(selectedGroup.totalGrossWeight)}
+                </td>
+                <td style={styles.td} />
+              </tr>
             </tbody>
           </table>
         </div>
@@ -219,11 +262,7 @@ const styles = {
   },
   blocks: { display: "flex", flexDirection: "column", gap: 10 },
 
-  blockRow: {
-    display: "flex",
-    gap: 10,
-    alignItems: "stretch",
-  },
+  blockRow: { display: "flex", gap: 10, alignItems: "stretch" },
 
   blockBtn: {
     flex: 1,
@@ -247,50 +286,48 @@ const styles = {
   },
 
   blockLine: { fontSize: 14 },
-  blockMeta: { marginTop: 8, fontSize: 12, color: "#eaeaea" },
-  blockLabel: { color: "#cfcfcf" },
+  blockMeta: { marginTop: 8, fontSize: 12, color: "#bdbdbd" },
+  blockLabel: { color: "#9a9a9a" },
 
-  empty: {
-    padding: 14,
-    border: "1px solid #2b2b2b",
-    borderRadius: 12,
-    background: "#101010",
-    color: "#bdbdbd",
-  },
-
-  pairTitle: { marginTop: 6, color: "#eaeaea", fontSize: 13 },
+  pairTitle: { marginTop: 6, color: "#bdbdbd", fontSize: 12 },
 
   ghostBtn: {
-    padding: "9px 12px",
     border: "1px solid #2b2b2b",
-    background: "transparent",
+    background: "#101010",
     color: "#fff",
     borderRadius: 10,
+    padding: "10px 12px",
     cursor: "pointer",
-    height: 36,
+    fontWeight: 800,
   },
 
   card: {
-    padding: 14,
     border: "1px solid #2b2b2b",
+    background: "#0f0f0f",
     borderRadius: 12,
-    background: "#101010",
+    padding: 12,
   },
 
-  table: { width: "100%", borderCollapse: "collapse" },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 12 },
   th: {
     textAlign: "left",
-    padding: "10px 8px",
     borderBottom: "1px solid #2b2b2b",
+    padding: "10px 8px",
     color: "#bdbdbd",
-    fontWeight: 800,
-    fontSize: 12,
+    fontWeight: 900,
     whiteSpace: "nowrap",
   },
   td: {
-    padding: "10px 8px",
     borderBottom: "1px solid #1f1f1f",
+    padding: "10px 8px",
     whiteSpace: "nowrap",
-    fontSize: 12,
+  },
+
+  empty: {
+    border: "1px dashed #2b2b2b",
+    borderRadius: 12,
+    padding: 18,
+    color: "#bdbdbd",
+    background: "#0f0f0f",
   },
 };

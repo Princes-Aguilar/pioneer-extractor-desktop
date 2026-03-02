@@ -9,7 +9,7 @@ function upper(s) {
 function parseKgs(v) {
   if (v == null) return 0;
   const s = String(v).replace(/,/g, "").trim();
-  const m = s.match(/-?\d+(\.\d+)?/); // supports "13.73 kgs"
+  const m = s.match(/-?\d+(\.\d+)?/);
   return m ? Number(m[0]) : 0;
 }
 
@@ -25,30 +25,33 @@ function isDG(r) {
   return v === "DG" || v === "YES" || v === "Y" || v === "TRUE";
 }
 
-export default function PreadviseModal({ open, onClose, group, onSubmit }) {
-  const rows = group?.rows || [];
+export default function PreadviseModal(props) {
+  const {
+    open,
+    onClose,
 
-  /**
-   * ✅ Requirement:
-   * Cargo Weight (kgs) = total gross weight of ALL items in the selected group
-   *
-   * Best source is what AutoDocsGenTab computed and passed in:
-   * group.cargoWeightKgs
-   *
-   * But we also provide a fallback computation here.
-   */
+    // ✅ supports both prop styles
+    group,
+    seed,
+    onSubmit,
+    onGenerate,
+  } = props;
+
+  const g = group || seed || null; // ✅ whichever is passed
+  const submit = onSubmit || onGenerate; // ✅ whichever is passed
+
+  const rows = g?.rows || g?.items || []; // ✅ supports rows/items
+
+  // Cargo Weight Total
   const cargoWeightTotal = useMemo(() => {
-    // Prefer precomputed value passed from AutoDocsGenTab
     if (
-      group?.cargoWeightKgs != null &&
-      Number.isFinite(Number(group.cargoWeightKgs))
+      g?.cargoWeightKgs != null &&
+      Number.isFinite(Number(g.cargoWeightKgs))
     ) {
-      return Number(group.cargoWeightKgs);
+      return Number(g.cargoWeightKgs);
     }
 
-    // Fallback: compute from rows
     return rows.reduce((sum, r) => {
-      // Your table shows r.grossWeight, so prioritize that
       const val = pickFirst(r, [
         "grossWeight",
         "grossWeightKgs",
@@ -57,41 +60,28 @@ export default function PreadviseModal({ open, onClose, group, onSubmit }) {
         "grossWt",
         "gw",
         "gross",
-        // if your data uses label-style keys:
         "Gross Weight",
         "GROSS WEIGHT",
-        "GROSSWT",
       ]);
       return sum + parseKgs(val);
     }, 0);
-  }, [group?.cargoWeightKgs, rows]);
+  }, [g?.cargoWeightKgs, rows]);
 
-  /**
-   * ✅ Requirement:
-   * UNNO & IMO CLASS = all UN/Class pairs for items in the selected group.
-   *
-   * Most companies want DG-only here, because pre-advise UN/IMDG is for DG.
-   * If you want ALL items (including Non-DG), set DG_ONLY=false below.
-   */
+  // UN/Class categorized
   const DG_ONLY = true;
-
   const unClassList = useMemo(() => {
-    // Prefer precomputed string from AutoDocsGenTab (if you passed it)
-    // But we’ll re-categorize even if it’s present, using rows (more reliable)
+    if (typeof g?.unnoImoClass === "string" && g.unnoImoClass.trim()) {
+      // if parent already computed it, keep it
+      return g.unnoImoClass.trim();
+    }
+
     const list = DG_ONLY ? rows.filter(isDG) : rows;
 
     const unSet = new Set();
     const classSet = new Set();
 
     for (const r of list) {
-      const un = pickFirst(r, [
-        "unNumber",
-        "unNo",
-        "unno",
-        "UNNO",
-        "UN No.",
-        "UN",
-      ]);
+      const un = pickFirst(r, ["unNumber", "unNo", "unno", "UNNO", "UN"]);
       const cls = pickFirst(r, [
         "classNumber",
         "imoClass",
@@ -102,7 +92,6 @@ export default function PreadviseModal({ open, onClose, group, onSubmit }) {
       ]);
 
       const unClean = upper(un).replace(/\s+/g, "");
-      // normalize "UN1993" (if user already types "1993", we add UN)
       const unNorm = unClean
         ? unClean.startsWith("UN")
           ? unClean
@@ -118,13 +107,11 @@ export default function PreadviseModal({ open, onClose, group, onSubmit }) {
     const unList = Array.from(unSet).join(", ");
     const clsList = Array.from(classSet).join(", ");
 
-    // ✅ Categorized output
     if (!unList && !clsList) return "";
-
     if (unList && clsList) return `UN: ${unList} | Class: ${clsList}`;
     if (unList) return `UN: ${unList}`;
     return `Class: ${clsList}`;
-  }, [rows]);
+  }, [g?.unnoImoClass, rows]);
 
   const [form, setForm] = useState({
     firstPort: "",
@@ -160,12 +147,44 @@ export default function PreadviseModal({ open, onClose, group, onSubmit }) {
   const setField = (k) => (e) =>
     setForm((p) => ({ ...p, [k]: e.target.value }));
 
+  const handleGenerate = () => {
+    if (typeof submit !== "function") {
+      console.error(
+        "PreadviseModal: Missing submit handler. Pass onSubmit or onGenerate from parent.",
+        { props },
+      );
+      return;
+    }
+
+    const tare = parseKgs(form.tareWeightKgs);
+    const vgmd = cargoWeightTotal + tare;
+
+    const payload = {
+      proNumber: g?.proNumber,
+      soiNumber: g?.soiNumber,
+      destination: g?.destination,
+
+      // ✅ auto fields
+      cargoWeightKgs: cargoWeightTotal,
+      unnoImoClass: unClassList,
+      vgmdKgs: vgmd,
+
+      // ✅ user inputs
+      ...form,
+
+      // include rows if backend wants it
+      items: rows,
+    };
+
+    submit(payload);
+  };
+
   return (
     <div style={styles.backdrop} onMouseDown={onClose}>
       <div style={styles.modal} onMouseDown={(e) => e.stopPropagation()}>
         <div style={styles.header}>
           <div style={{ fontWeight: 700 }}>Generate KMTC Pre-advise</div>
-          <button onClick={onClose} style={styles.xbtn}>
+          <button onClick={onClose} style={styles.xbtn} type="button">
             ✕
           </button>
         </div>
@@ -241,41 +260,13 @@ export default function PreadviseModal({ open, onClose, group, onSubmit }) {
         </div>
 
         <div style={styles.footer}>
-          <button onClick={onClose} style={styles.btn}>
+          <button onClick={onClose} style={styles.btn} type="button">
             Cancel
           </button>
           <button
-            onClick={() => {
-              const payload = {
-                proNumber: group?.proNumber,
-                soiNumber: group?.soiNumber,
-                destination: group?.destination,
-
-                // ✅ auto fields required by you
-                cargoWeightKgs: cargoWeightTotal,
-                unnoImoClass: unClassList,
-
-                // ✅ user inputs
-                ...form,
-
-                // Include rows in case backend wants to recompute/verify
-                items: rows,
-              };
-
-              // Debug:
-              const dgItems = rows.filter(isDG);
-              console.log("Rows:", rows.length);
-              console.log(
-                "DG count:",
-                dgItems.length,
-                dgItems.map((x) => x.unNumber),
-              );
-              console.log("CargoWeightTotal:", cargoWeightTotal);
-              console.log("UN/Class:", unClassList);
-
-              onSubmit(payload);
-            }}
+            onClick={handleGenerate}
             style={{ ...styles.btn, ...styles.btnPrimary }}
+            type="button"
           >
             Generate
           </button>
