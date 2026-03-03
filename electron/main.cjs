@@ -318,6 +318,65 @@ ipcMain.handle("generate-preadvise", async (_event, payload) => {
   }
 });
 
+ipcMain.handle("generate-loi", async (_event, payload) => {
+  try {
+    const pythonCmd = process.platform === "win32" ? "python" : "python3";
+    const projectRoot = app.getAppPath();
+
+    const templatePath = path.join(
+      projectRoot,
+      "python",
+      "templates",
+      "Letter_of_Indemnity.docx",
+    );
+
+    if (!fs.existsSync(templatePath)) {
+      return { ok: false, error: `Template not found: ${templatePath}` };
+    }
+
+    const outDir = path.join(app.getPath("downloads"), "pioneer-loi");
+    fs.mkdirSync(outDir, { recursive: true });
+
+    const pro = String(payload?.proNumber || "").trim() || "PRO";
+    const soi = String(payload?.soiNumber || "").trim() || "SOI";
+    const dest = String(payload?.destination || "").trim() || "DEST";
+
+    const outPath = path.join(
+      outDir,
+      `${pro}_${soi}_${dest}_LOI.docx`.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_"),
+    );
+
+    const scriptPath = path.join(
+      projectRoot,
+      "python",
+      "generate_loi_docx_cli.py",
+    );
+
+    const tempJson = path.join(outDir, `payload_${Date.now()}.json`);
+    fs.writeFileSync(tempJson, JSON.stringify(payload, null, 2), "utf-8");
+
+    await new Promise((resolve, reject) => {
+      const proc = spawn(
+        pythonCmd,
+        [scriptPath, templatePath, outPath, tempJson],
+        { windowsHide: true },
+      );
+      let err = "";
+
+      proc.stderr.on("data", (d) => (err += d.toString()));
+      proc.on("error", reject);
+      proc.on("close", (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(err || `LOI generation failed (code ${code})`));
+      });
+    });
+
+    return { ok: true, outPath };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+});
+
 function runPython(pythonCmd, scriptPath, args) {
   return new Promise((resolve, reject) => {
     const proc = spawn(pythonCmd, [scriptPath, ...args], { windowsHide: true });

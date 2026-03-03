@@ -325,6 +325,68 @@ export default function AutoDocsGenTab({ store, actions }) {
                 >
                   Generate Pre-advise
                 </button>
+
+                <button
+                  style={styles.menuItem}
+                  type="button"
+                  onClick={async () => {
+                    setDocMenuOpen(false);
+
+                    const rows = selectedGroup.rows || [];
+                    const dg = rows.filter((r) =>
+                      ["DG", "YES", "Y", "TRUE"].includes(
+                        String(r.dgStatus || "")
+                          .trim()
+                          .toUpperCase(),
+                      ),
+                    );
+                    const ndg = rows.filter(
+                      (r) =>
+                        !["DG", "YES", "Y", "TRUE"].includes(
+                          String(r.dgStatus || "")
+                            .trim()
+                            .toUpperCase(),
+                        ),
+                    );
+
+                    const pickName = (r) =>
+                      (
+                        r.properShippingName ||
+                        r.description ||
+                        r.productName ||
+                        "—"
+                      )
+                        .toString()
+                        .trim();
+
+                    const totalGW = rows.reduce((sum, r) => {
+                      const v = String(r.grossWeight ?? "")
+                        .replace(/,/g, "")
+                        .trim();
+                      const n = parseFloat(v) || 0;
+                      return sum + n;
+                    }, 0);
+
+                    const payload = {
+                      proNumber: selectedGroup.proNumber,
+                      soiNumber: selectedGroup.soiNumber,
+                      destination: selectedGroup.destination,
+                      items: rows,
+                      dgItems: dg.map(pickName),
+                      ndgItems: ndg.map(pickName),
+                      totalGrossWeightKgs: totalGW,
+                    };
+
+                    const res = await window.pioneer.generateLOI(payload);
+                    if (!res?.ok) {
+                      setUiMsg(res?.error || "LOI failed.");
+                      return;
+                    }
+                    setUiMsg(`LOI saved to:\n${res.outPath}`);
+                  }}
+                >
+                  Generate LOI
+                </button>
               </div>
             )}
           </div>

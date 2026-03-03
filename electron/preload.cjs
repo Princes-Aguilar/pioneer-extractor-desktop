@@ -6,4 +6,5 @@ contextBridge.exposeInMainWorld("pioneer", {
   generateDGDec: (payload) => ipcRenderer.invoke("generate-dgdec", payload),
   generatePreadvise: (payload) =>
     ipcRenderer.invoke("generate-preadvise", payload),
+  generateLOI: (payload) => ipcRenderer.invoke("generate-loi", payload),
 });
