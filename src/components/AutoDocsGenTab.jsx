@@ -387,6 +387,55 @@ export default function AutoDocsGenTab({ store, actions }) {
                 >
                   Generate LOI
                 </button>
+
+                <button
+                  style={styles.menuItem}
+                  type="button"
+                  onClick={async () => {
+                    setDocMenuOpen(false);
+
+                    const rows = selectedGroup.rows || [];
+
+                    // ✅ Non-DG based on your edited DG status (All Pioneer Items)
+                    // If your current LOI already uses the All Pioneer Items map, reuse that same logic here.
+                    const ndgItems = rows
+                      .filter(
+                        (r) =>
+                          !["DG", "YES", "Y", "TRUE"].includes(
+                            String(r.dgStatus || "")
+                              .trim()
+                              .toUpperCase(),
+                          ),
+                      )
+                      .map((r) =>
+                        (
+                          r.properShippingName ||
+                          r.description ||
+                          r.productName ||
+                          "—"
+                        )
+                          .toString()
+                          .trim(),
+                      );
+
+                    const payload = {
+                      proNumber: selectedGroup.proNumber,
+                      soiNumber: selectedGroup.soiNumber,
+                      destination: selectedGroup.destination,
+                      items: rows,
+                      ndgItems,
+                    };
+
+                    const res = await window.pioneer.generateNonDGCert(payload);
+                    if (!res?.ok) {
+                      setUiMsg(res?.error || "Non-DG Certification failed.");
+                      return;
+                    }
+                    setUiMsg(`Non-DG Certification saved to:\n${res.outPath}`);
+                  }}
+                >
+                  Generate Non-DG Cert
+                </button>
               </div>
             )}
           </div>

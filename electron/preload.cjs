@@ -7,4 +7,6 @@ contextBridge.exposeInMainWorld("pioneer", {
   generatePreadvise: (payload) =>
     ipcRenderer.invoke("generate-preadvise", payload),
   generateLOI: (payload) => ipcRenderer.invoke("generate-loi", payload),
+  generateNonDGCert: (payload) =>
+    ipcRenderer.invoke("generate-nondg-cert", payload),
 });
