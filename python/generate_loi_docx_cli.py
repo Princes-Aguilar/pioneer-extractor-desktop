@@ -85,6 +85,10 @@ def main():
         "{{DG_LIST}}": dg_text,
         "{{NDG_LIST}}": ndg_text,
         "{{TOTAL_GW}}": fmt2(total_gw),
+
+        "{{VESSEL_VOYAGE}}": str(payload.get("vesselVoyage", "")),
+        "{{BOOKING_NUMBER}}": str(payload.get("bookingNumber", "")),
+        "{{DESTINATION}}": str(payload.get("destination", "")),
     }
 
     doc = Document(template_path)

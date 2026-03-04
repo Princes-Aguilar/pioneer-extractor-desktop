@@ -26,7 +26,6 @@ function createWindow() {
 
   if (!app.isPackaged) {
     mainWindow.loadURL(devUrl);
-    mainWindow.webContents.openDevTools({ mode: "detach" });
   } else {
     mainWindow.loadFile(indexPath);
   }
@@ -319,50 +318,53 @@ ipcMain.handle("generate-preadvise", async (_event, payload) => {
 });
 
 ipcMain.handle("generate-loi", async (_event, payload) => {
+  const pythonCmd = process.platform === "win32" ? "python" : "python3";
+  const projectRoot = app.getAppPath();
+
+  const templatePath = path.join(
+    projectRoot,
+    "python",
+    "templates",
+    "Letter_of_Indemnity.docx",
+  );
+
+  if (!fs.existsSync(templatePath)) {
+    return { ok: false, error: `Template not found: ${templatePath}` };
+  }
+
+  const outDir = path.join(app.getPath("downloads"), "pioneer-loi");
+  fs.mkdirSync(outDir, { recursive: true });
+
+  const pro = String(payload?.proNumber || "").trim() || "PRO";
+  const soi = String(payload?.soiNumber || "").trim() || "SOI";
+  const dest = String(payload?.destination || "").trim() || "DEST";
+
+  const outPath = path.join(
+    outDir,
+    `${pro}_${soi}_${dest}_LOI.docx`.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_"),
+  );
+
+  const scriptPath = path.join(
+    projectRoot,
+    "python",
+    "generate_loi_docx_cli.py",
+  );
+
+  // Write payload to a temp json file (cleaned up in finally)
+  const tempJson = path.join(outDir, `payload_${Date.now()}.json`);
+  fs.writeFileSync(tempJson, JSON.stringify(payload, null, 2), "utf-8");
+
   try {
-    const pythonCmd = process.platform === "win32" ? "python" : "python3";
-    const projectRoot = app.getAppPath();
-
-    const templatePath = path.join(
-      projectRoot,
-      "python",
-      "templates",
-      "Letter_of_Indemnity.docx",
-    );
-
-    if (!fs.existsSync(templatePath)) {
-      return { ok: false, error: `Template not found: ${templatePath}` };
-    }
-
-    const outDir = path.join(app.getPath("downloads"), "pioneer-loi");
-    fs.mkdirSync(outDir, { recursive: true });
-
-    const pro = String(payload?.proNumber || "").trim() || "PRO";
-    const soi = String(payload?.soiNumber || "").trim() || "SOI";
-    const dest = String(payload?.destination || "").trim() || "DEST";
-
-    const outPath = path.join(
-      outDir,
-      `${pro}_${soi}_${dest}_LOI.docx`.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_"),
-    );
-
-    const scriptPath = path.join(
-      projectRoot,
-      "python",
-      "generate_loi_docx_cli.py",
-    );
-
-    const tempJson = path.join(outDir, `payload_${Date.now()}.json`);
-    fs.writeFileSync(tempJson, JSON.stringify(payload, null, 2), "utf-8");
-
     await new Promise((resolve, reject) => {
       const proc = spawn(
         pythonCmd,
         [scriptPath, templatePath, outPath, tempJson],
-        { windowsHide: true },
+        {
+          windowsHide: true,
+        },
       );
-      let err = "";
 
+      let err = "";
       proc.stderr.on("data", (d) => (err += d.toString()));
       proc.on("error", reject);
       proc.on("close", (code) => {
@@ -374,53 +376,62 @@ ipcMain.handle("generate-loi", async (_event, payload) => {
     return { ok: true, outPath };
   } catch (err) {
     return { ok: false, error: err?.message || String(err) };
+  } finally {
+    // ✅ delete the temp payload file so it doesn't clutter Downloads
+    try {
+      if (fs.existsSync(tempJson)) fs.unlinkSync(tempJson);
+    } catch (_) {}
   }
 });
 
 ipcMain.handle("generate-nondg-cert", async (_event, payload) => {
+  const pythonCmd = process.platform === "win32" ? "python" : "python3";
+  const projectRoot = app.getAppPath();
+
+  const templatePath = path.join(
+    projectRoot,
+    "python",
+    "templates",
+    "Non-DG_Certification.docx",
+  );
+
+  if (!fs.existsSync(templatePath)) {
+    return { ok: false, error: `Template not found: ${templatePath}` };
+  }
+
+  const outDir = path.join(app.getPath("downloads"), "pioneer-nondg-cert");
+  fs.mkdirSync(outDir, { recursive: true });
+
+  const pro = String(payload?.proNumber || "").trim() || "PRO";
+  const soi = String(payload?.soiNumber || "").trim() || "SOI";
+  const dest = String(payload?.destination || "").trim() || "DEST";
+
+  const safeName = `${pro}_${soi}_${dest}_NON_DG_CERT.docx`.replace(
+    /[<>:"/\\|?*\x00-\x1F]/g,
+    "_",
+  );
+  const outPath = path.join(outDir, safeName);
+
+  const scriptPath = path.join(
+    projectRoot,
+    "python",
+    "generate_nondg_cert_docx_cli.py",
+  );
+
+  // Write payload to a temp json file (cleaned up in finally)
+  const tempJson = path.join(outDir, `payload_${Date.now()}.json`);
+  fs.writeFileSync(tempJson, JSON.stringify(payload, null, 2), "utf-8");
+
   try {
-    const pythonCmd = process.platform === "win32" ? "python" : "python3";
-    const projectRoot = app.getAppPath();
-
-    const templatePath = path.join(
-      projectRoot,
-      "python",
-      "templates",
-      "Non-DG_Certification.docx",
-    );
-
-    if (!fs.existsSync(templatePath)) {
-      return { ok: false, error: `Template not found: ${templatePath}` };
-    }
-
-    const outDir = path.join(app.getPath("downloads"), "pioneer-nondg-cert");
-    fs.mkdirSync(outDir, { recursive: true });
-
-    const pro = String(payload?.proNumber || "").trim() || "PRO";
-    const soi = String(payload?.soiNumber || "").trim() || "SOI";
-    const dest = String(payload?.destination || "").trim() || "DEST";
-
-    const safeName = `${pro}_${soi}_${dest}_NON_DG_CERT.docx`.replace(
-      /[<>:"/\\|?*\x00-\x1F]/g,
-      "_",
-    );
-    const outPath = path.join(outDir, safeName);
-
-    const scriptPath = path.join(
-      projectRoot,
-      "python",
-      "generate_nondg_cert_docx_cli.py",
-    );
-
-    const tempJson = path.join(outDir, `payload_${Date.now()}.json`);
-    fs.writeFileSync(tempJson, JSON.stringify(payload, null, 2), "utf-8");
-
     await new Promise((resolve, reject) => {
       const proc = spawn(
         pythonCmd,
         [scriptPath, templatePath, outPath, tempJson],
-        { windowsHide: true },
+        {
+          windowsHide: true,
+        },
       );
+
       let err = "";
       proc.stderr.on("data", (d) => (err += d.toString()));
       proc.on("error", reject);
@@ -436,6 +447,11 @@ ipcMain.handle("generate-nondg-cert", async (_event, payload) => {
     return { ok: true, outPath };
   } catch (err) {
     return { ok: false, error: err?.message || String(err) };
+  } finally {
+    // ✅ delete the temp payload file so it doesn't clutter Downloads
+    try {
+      if (fs.existsSync(tempJson)) fs.unlinkSync(tempJson);
+    } catch (_) {}
   }
 });
 

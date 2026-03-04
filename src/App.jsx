@@ -11,6 +11,8 @@ export default function App() {
 
   // Preview after extraction, before saving
   const [extractedPreview, setExtractedPreview] = useState(null);
+  // ✅ Persist doc info per PRO||SOI||DEST (used by LOI, etc.)
+  const [docMetaByGroup, setDocMetaByGroup] = useState(() => ({}));
 
   const actions = useMemo(() => {
     return {
@@ -252,14 +254,19 @@ export default function App() {
           }),
         );
       },
-
+      // ✅ Save doc metadata (vessel/booking/etc.) for a PRO||SOI||DEST group
+      saveDocMeta: ({ key, meta }) => {
+        setDocMetaByGroup((prev) => ({
+          ...prev,
+          [key]: { ...(prev[key] || {}), ...(meta || {}) },
+        }));
+      },
       // optional helper
       clearAll: () => setSavedItems([]),
     };
   }, [selectedFile, extractedPreview]);
 
-  const store = { savedItems, selectedFile, extractedPreview };
-
+  const store = { savedItems, selectedFile, extractedPreview, docMetaByGroup };
   return (
     <div style={styles.appShell}>
       {screen === "start" ? (

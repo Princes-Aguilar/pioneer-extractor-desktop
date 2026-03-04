@@ -231,6 +231,17 @@ export default function AutoDocsGenTab({ store, actions }) {
           group={preadviseGroup}
           onClose={() => setPreadviseOpen(false)}
           onSubmit={(payload) => {
+            // ✅ Save vessel + booking so LOI can reuse them
+            const groupKey = `${payload.proNumber}||${payload.soiNumber}||${payload.destination}`;
+
+            actions?.saveDocMeta?.({
+              key: groupKey,
+              meta: {
+                vesselVoyage: payload.vesselVoyage || "",
+                bookingNumber: payload.bookingNumber || "",
+              },
+            });
+
             run(
               `preadvise:${payload.proNumber}:${payload.soiNumber}`,
               actions?.generatePreadvise,
@@ -367,10 +378,18 @@ export default function AutoDocsGenTab({ store, actions }) {
                       return sum + n;
                     }, 0);
 
+                    const meta =
+                      store?.docMetaByGroup?.[selectedGroup.key] || {};
+
                     const payload = {
                       proNumber: selectedGroup.proNumber,
                       soiNumber: selectedGroup.soiNumber,
                       destination: selectedGroup.destination,
+
+                      vesselVoyage: meta.vesselVoyage || "",
+                      bookingNumber: meta.bookingNumber || "",
+                      destination: selectedGroup.destination || "",
+
                       items: rows,
                       dgItems: dg.map(pickName),
                       ndgItems: ndg.map(pickName),
@@ -491,6 +510,17 @@ export default function AutoDocsGenTab({ store, actions }) {
         group={preadviseGroup}
         onClose={() => setPreadviseOpen(false)}
         onSubmit={(payload) => {
+          // ✅ Save vessel + booking so LOI can reuse them
+          const groupKey = `${payload.proNumber}||${payload.soiNumber}||${payload.destination}`;
+
+          actions?.saveDocMeta?.({
+            key: groupKey,
+            meta: {
+              vesselVoyage: payload.vesselVoyage || "",
+              bookingNumber: payload.bookingNumber || "",
+            },
+          });
+
           run(
             `preadvise:${payload.proNumber}:${payload.soiNumber}`,
             actions?.generatePreadvise,
