@@ -78,7 +78,6 @@ export default function AutoDocsGenTab({ store, actions }) {
   const [preadviseOpen, setPreadviseOpen] = useState(false);
   const [preadviseGroup, setPreadviseGroup] = useState(null);
 
-  // ✅ replace alert()
   const [uiMsg, setUiMsg] = useState(null);
 
   // ----------------------
@@ -135,14 +134,44 @@ export default function AutoDocsGenTab({ store, actions }) {
     return groups.find((g) => g.key === selectedKey) || null;
   }, [groups, selectedKey]);
 
-  const run = async (label, fn, payload) => {
+  const run = async (label, fn, payload, successLabel = "Document") => {
     if (typeof fn !== "function") {
       setUiMsg(`Action missing: ${label}\nAdd it in App.jsx actions.`);
       return;
     }
+
     try {
       setWorking(label);
-      await fn(payload);
+
+      const res = await fn(payload);
+
+      if (res?.ok) {
+        if (res.outPath) {
+          setUiMsg(`${successLabel} saved to:\n${res.outPath}`);
+        } else if (
+          Array.isArray(res.generatedFiles) &&
+          res.generatedFiles.length > 0
+        ) {
+          setUiMsg(
+            `${successLabel} generated successfully.\n\nFiles created: ${res.generatedFiles.length}\nFolder: ${res.outDir || ""}`,
+          );
+        } else if (res.outDir) {
+          setUiMsg(
+            `${successLabel} generated successfully.\n\nFolder: ${res.outDir}`,
+          );
+        } else {
+          setUiMsg(`${successLabel} generated successfully.`);
+        }
+        return res;
+      }
+
+      if (res && res.ok === false) {
+        setUiMsg(res.error || `${successLabel} failed.`);
+        return res;
+      }
+
+      setUiMsg(`${successLabel} generated successfully.`);
+      return res;
     } catch (e) {
       setUiMsg(e?.message || String(e));
     } finally {
@@ -163,9 +192,6 @@ export default function AutoDocsGenTab({ store, actions }) {
     return (rows || []).filter(isDG);
   }
 
-  // ----------------------------
-  // VIEW A: Overview blocks
-  // ----------------------------
   if (!selectedGroup) {
     return (
       <div style={styles.wrap}>
@@ -231,7 +257,6 @@ export default function AutoDocsGenTab({ store, actions }) {
           group={preadviseGroup}
           onClose={() => setPreadviseOpen(false)}
           onSubmit={(payload) => {
-            // ✅ Save vessel + booking so LOI can reuse them
             const groupKey = `${payload.proNumber}||${payload.soiNumber}||${payload.destination}`;
 
             actions?.saveDocMeta?.({
@@ -246,6 +271,7 @@ export default function AutoDocsGenTab({ store, actions }) {
               `preadvise:${payload.proNumber}:${payload.soiNumber}`,
               actions?.generatePreadvise,
               payload,
+              "Preadvise",
             );
             setPreadviseOpen(false);
           }}
@@ -254,9 +280,6 @@ export default function AutoDocsGenTab({ store, actions }) {
     );
   }
 
-  // ----------------------------
-  // VIEW B: Selected block details + doc chooser
-  // ----------------------------
   const dgItems = dgItemsOf(selectedGroup.rows);
 
   return (
@@ -306,18 +329,22 @@ export default function AutoDocsGenTab({ store, actions }) {
                   onClick={() => {
                     setDocMenuOpen(false);
 
-                    // ✅ no alert -> no focus bug
                     if (dgItems.length === 0) {
                       setUiMsg("No DG items found in this PRO/SOI group.");
                       return;
                     }
 
-                    run(`dg:${selectedGroup.key}`, actions?.generateDGDec, {
-                      proNumber: selectedGroup.proNumber,
-                      soiNumber: selectedGroup.soiNumber,
-                      destination: selectedGroup.destination,
-                      items: dgItems,
-                    });
+                    run(
+                      `dg:${selectedGroup.key}`,
+                      actions?.generateDGDec,
+                      {
+                        proNumber: selectedGroup.proNumber,
+                        soiNumber: selectedGroup.soiNumber,
+                        destination: selectedGroup.destination,
+                        items: dgItems,
+                      },
+                      "DG Dec",
+                    );
                   }}
                 >
                   {working === `dg:${selectedGroup.key}`
@@ -385,11 +412,8 @@ export default function AutoDocsGenTab({ store, actions }) {
                       proNumber: selectedGroup.proNumber,
                       soiNumber: selectedGroup.soiNumber,
                       destination: selectedGroup.destination,
-
                       vesselVoyage: meta.vesselVoyage || "",
                       bookingNumber: meta.bookingNumber || "",
-                      destination: selectedGroup.destination || "",
-
                       items: rows,
                       dgItems: dg.map(pickName),
                       ndgItems: ndg.map(pickName),
@@ -415,8 +439,6 @@ export default function AutoDocsGenTab({ store, actions }) {
 
                     const rows = selectedGroup.rows || [];
 
-                    // ✅ Non-DG based on your edited DG status (All Pioneer Items)
-                    // If your current LOI already uses the All Pioneer Items map, reuse that same logic here.
                     const ndgItems = rows
                       .filter(
                         (r) =>
@@ -510,7 +532,6 @@ export default function AutoDocsGenTab({ store, actions }) {
         group={preadviseGroup}
         onClose={() => setPreadviseOpen(false)}
         onSubmit={(payload) => {
-          // ✅ Save vessel + booking so LOI can reuse them
           const groupKey = `${payload.proNumber}||${payload.soiNumber}||${payload.destination}`;
 
           actions?.saveDocMeta?.({
@@ -525,6 +546,7 @@ export default function AutoDocsGenTab({ store, actions }) {
             `preadvise:${payload.proNumber}:${payload.soiNumber}`,
             actions?.generatePreadvise,
             payload,
+            "Preadvise",
           );
           setPreadviseOpen(false);
         }}
@@ -657,7 +679,6 @@ const styles = {
 
   note: { marginTop: 12, color: "#bdbdbd", fontSize: 12 },
 
-  // ✅ non-blocking replacement for alert()
   msgBackdrop: {
     position: "fixed",
     inset: 0,
