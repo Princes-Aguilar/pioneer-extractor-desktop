@@ -70,6 +70,217 @@ function MessageModal({ message, onClose }) {
   );
 }
 
+// ----------------------
+// Matching helpers
+// ----------------------
+const STOP_WORDS = new Set([
+  "THE",
+  "AND",
+  "OF",
+  "FOR",
+  "WITH",
+  "IN",
+  "ON",
+  "TO",
+  "A",
+  "AN",
+  "PART",
+  "COMPONENT",
+  "KIT",
+  "SET",
+  "COLOR",
+  "COLOUR",
+]);
+
+function tokenizeMeaningful(s) {
+  return upper(s)
+    .replace(/[^A-Z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(
+      (w) =>
+        w &&
+        w.length > 1 &&
+        !STOP_WORDS.has(w) &&
+        !/^\d+(\.\d+)?(ML|L|KG|G|GM|OZ|LB|LBS)?$/.test(w),
+    );
+}
+
+function stripPartMarkers(s) {
+  return upper(s)
+    .replace(/\bPART\s*A\b/g, " ")
+    .replace(/\bPART\s*B\b/g, " ")
+    .replace(/\bCOMPONENT\s*A\b/g, " ")
+    .replace(/\bCOMPONENT\s*B\b/g, " ")
+    .replace(/\bA\s*PART\b/g, " ")
+    .replace(/\bB\s*PART\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function detectPartLabel(s) {
+  const t = upper(s);
+  if (/\bPART\s*A\b/.test(t) || /\bCOMPONENT\s*A\b/.test(t)) return "A";
+  if (/\bPART\s*B\b/.test(t) || /\bCOMPONENT\s*B\b/.test(t)) return "B";
+  return "";
+}
+
+function intersectionCount(aWords, bWords) {
+  const a = new Set(aWords);
+  let count = 0;
+  for (const w of bWords) if (a.has(w)) count++;
+  return count;
+}
+
+function buildMsdsLookup(msdsItems) {
+  const rows = Array.isArray(msdsItems) ? msdsItems : [];
+
+  return rows.map((r) => {
+    const desc =
+      r.descriptionClean ||
+      r.description ||
+      r.product ||
+      r.properShippingName ||
+      "";
+    const base = stripPartMarkers(desc);
+    const words = tokenizeMeaningful(base);
+    const part = detectPartLabel(desc);
+
+    return {
+      ...r,
+      _msdsDesc: desc,
+      _base: base,
+      _words: words,
+      _part: part,
+    };
+  });
+}
+
+function findPartVariantsForPackingItem(packingDesc, msdsPrepared) {
+  const packingBase = stripPartMarkers(packingDesc);
+  const packingWords = tokenizeMeaningful(packingBase);
+
+  const candidates = msdsPrepared
+    .map((m) => ({
+      ...m,
+      _score: intersectionCount(packingWords, m._words),
+    }))
+    .filter((m) => m._score >= 2);
+
+  if (!candidates.length) return [];
+
+  const aCandidates = candidates.filter((c) => c._part === "A");
+  const bCandidates = candidates.filter((c) => c._part === "B");
+
+  const bestA = aCandidates.sort((x, y) => y._score - x._score)[0] || null;
+  const bestB = bCandidates.sort((x, y) => y._score - x._score)[0] || null;
+
+  if (bestA && bestB) return [bestA, bestB];
+
+  // no pair found, fallback to best overall single match
+  const bestSingle = candidates.sort((x, y) => y._score - x._score)[0];
+  return bestSingle ? [bestSingle] : [];
+}
+
+function splitValue(val, ratio) {
+  const n = parseNumber(val);
+  return n ? Number((n * ratio).toFixed(2)) : 0;
+}
+
+function buildExpandedRows(rows, savedMsdsItems) {
+  const msdsPrepared = buildMsdsLookup(savedMsdsItems);
+
+  const expanded = [];
+
+  for (const row of rows || []) {
+    const packingDesc = row.description || row.productName || "";
+    const matchedParts = findPartVariantsForPackingItem(
+      packingDesc,
+      msdsPrepared,
+    );
+
+    // if both A and B found, expand into 2 rows using 60/40
+    if (matchedParts.length >= 2) {
+      const a = matchedParts.find((x) => x._part === "A");
+      const b = matchedParts.find((x) => x._part === "B");
+
+      if (a && b) {
+        expanded.push({
+          ...row,
+          description: `${packingDesc} PART A`,
+          qty: splitValue(row.qty, 0.6),
+          noOfBoxes: splitValue(row.noOfBoxes, 0.6),
+          netWeight: splitValue(row.netWeight, 0.6),
+          grossWeight: splitValue(row.grossWeight, 0.6),
+
+          dgStatus: a.dgStatus || row.dgStatus || "",
+          unNumber: a.unNumber || "",
+          classNumber: a.classNumber || "",
+          packingGroup: a.packingGroup || "",
+          flashPoint: a.flashPoint || "",
+          properShippingName: a.properShippingName || "",
+          technicalName: a.technicalName || "",
+          ems: a.ems || "",
+          marinePollutant: a.marinePollutant || "",
+          innerType: a.innerType || "",
+          outerType: a.outerType || "",
+          _matchedFromMsds: a._msdsDesc || "",
+        });
+
+        expanded.push({
+          ...row,
+          description: `${packingDesc} PART B`,
+          qty: splitValue(row.qty, 0.4),
+          noOfBoxes: splitValue(row.noOfBoxes, 0.4),
+          netWeight: splitValue(row.netWeight, 0.4),
+          grossWeight: splitValue(row.grossWeight, 0.4),
+
+          dgStatus: b.dgStatus || row.dgStatus || "",
+          unNumber: b.unNumber || "",
+          classNumber: b.classNumber || "",
+          packingGroup: b.packingGroup || "",
+          flashPoint: b.flashPoint || "",
+          properShippingName: b.properShippingName || "",
+          technicalName: b.technicalName || "",
+          ems: b.ems || "",
+          marinePollutant: b.marinePollutant || "",
+          innerType: b.innerType || "",
+          outerType: b.outerType || "",
+          _matchedFromMsds: b._msdsDesc || "",
+        });
+
+        continue;
+      }
+    }
+
+    // fallback: use one best MSDS match if available
+    const single = matchedParts[0];
+    if (single) {
+      expanded.push({
+        ...row,
+        dgStatus: single.dgStatus || row.dgStatus || "",
+        unNumber: single.unNumber || row.unNumber || "",
+        classNumber: single.classNumber || row.classNumber || "",
+        packingGroup: single.packingGroup || row.packingGroup || "",
+        flashPoint: single.flashPoint || row.flashPoint || "",
+        properShippingName:
+          single.properShippingName || row.properShippingName || "",
+        technicalName: single.technicalName || row.technicalName || "",
+        ems: single.ems || row.ems || "",
+        marinePollutant: single.marinePollutant || row.marinePollutant || "",
+        innerType: single.innerType || row.innerType || "",
+        outerType: single.outerType || row.outerType || "",
+        _matchedFromMsds: single._msdsDesc || "",
+      });
+      continue;
+    }
+
+    // no match
+    expanded.push(row);
+  }
+
+  return expanded;
+}
+
 export default function AutoDocsGenTab({ store, actions }) {
   const [selectedKey, setSelectedKey] = useState(null);
   const [docMenuOpen, setDocMenuOpen] = useState(false);
@@ -80,12 +291,10 @@ export default function AutoDocsGenTab({ store, actions }) {
 
   const [uiMsg, setUiMsg] = useState(null);
 
-  // ----------------------
-  // Build groups (PRO+SOI+DEST)
-  // ----------------------
   const groups = useMemo(() => {
     const map = new Map();
     const saved = store?.savedItems || [];
+    const savedMsdsItems = store?.savedMsdsItems || [];
 
     for (const rec of saved) {
       const recPro = (rec?.proNumber ?? "").toString().trim();
@@ -120,14 +329,19 @@ export default function AutoDocsGenTab({ store, actions }) {
       }
     }
 
-    return Array.from(map.values()).sort((a, b) =>
+    const groupsArr = Array.from(map.values()).map((g) => ({
+      ...g,
+      rows: buildExpandedRows(g.rows, savedMsdsItems),
+    }));
+
+    return groupsArr.sort((a, b) =>
       `${a.proNumber}|${a.soiNumber}|${a.destination}`.localeCompare(
         `${b.proNumber}|${b.soiNumber}|${b.destination}`,
         undefined,
         { sensitivity: "base" },
       ),
     );
-  }, [store?.savedItems]);
+  }, [store?.savedItems, store?.savedMsdsItems]);
 
   const selectedGroup = useMemo(() => {
     if (!selectedKey) return null;
@@ -142,7 +356,6 @@ export default function AutoDocsGenTab({ store, actions }) {
 
     try {
       setWorking(label);
-
       const res = await fn(payload);
 
       if (res?.ok) {
@@ -494,11 +707,18 @@ export default function AutoDocsGenTab({ store, actions }) {
                 <th style={styles.th}>Net Wt</th>
                 <th style={styles.th}>Gross Wt</th>
                 <th style={styles.th}>File Name</th>
-                <th style={styles.th}>DG</th>
-                <th style={styles.th}>UN</th>
+                <th style={styles.th}>DG/Non-DG</th>
+                <th style={styles.th}>UN No.</th>
                 <th style={styles.th}>Class</th>
-                <th style={styles.th}>PG</th>
+                <th style={styles.th}>Packing Group</th>
                 <th style={styles.th}>Flash Point</th>
+                <th style={styles.th}>Proper Shipping Name</th>
+                <th style={styles.th}>Technical Name</th>
+                <th style={styles.th}>EMS</th>
+                <th style={styles.th}>Marine Pollutant</th>
+                <th style={styles.th}>Inner Type</th>
+                <th style={styles.th}>Outer Type</th>
+                <th style={styles.th}>MSDS Match</th>
               </tr>
             </thead>
             <tbody>
@@ -515,6 +735,13 @@ export default function AutoDocsGenTab({ store, actions }) {
                   <td style={styles.td}>{r.classNumber || "—"}</td>
                   <td style={styles.td}>{r.packingGroup || "—"}</td>
                   <td style={styles.td}>{r.flashPoint || "—"}</td>
+                  <td style={styles.td}>{r.properShippingName || "—"}</td>
+                  <td style={styles.td}>{r.technicalName || "—"}</td>
+                  <td style={styles.td}>{r.ems || "—"}</td>
+                  <td style={styles.td}>{r.marinePollutant || "—"}</td>
+                  <td style={styles.td}>{r.innerType || "—"}</td>
+                  <td style={styles.td}>{r.outerType || "—"}</td>
+                  <td style={styles.td}>{r._matchedFromMsds || "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -522,8 +749,9 @@ export default function AutoDocsGenTab({ store, actions }) {
         </div>
 
         <div style={styles.note}>
-          Tip: You can edit DG fields in <b>All Pioneer Items</b> first, then
-          generate documents here.
+          Auto Docs now reflects DG fields from <b>All Pioneer Items / MSDS</b>.
+          If a base product has Part A and Part B in MSDS, it expands to both
+          and splits Qty/Boxes/Weights into <b>60%</b> and <b>40%</b>.
         </div>
       </div>
 
@@ -675,6 +903,7 @@ const styles = {
     borderBottom: "1px solid #1f1f1f",
     padding: "10px 8px",
     whiteSpace: "nowrap",
+    verticalAlign: "top",
   },
 
   note: { marginTop: 12, color: "#bdbdbd", fontSize: 12 },
