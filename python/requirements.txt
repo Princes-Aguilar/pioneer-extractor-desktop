@@ -1,2 +1,4 @@
-pdfplumber==0.11.4
-pandas==2.2.3
+python-docx
+openpyxl
+pandas
+pdfplumber
