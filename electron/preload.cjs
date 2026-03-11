@@ -2,6 +2,9 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("pioneer", {
   openPdfDialog: () => ipcRenderer.invoke("dialog:openPdf"),
+  openMsdsPdfsDialog: () => ipcRenderer.invoke("dialog:openMsdsPdfs"),
+  extractManyMsdsPdfs: (filePaths) =>
+    ipcRenderer.invoke("msds:extractMany", filePaths),
   openMsdsPdfDialog: () => ipcRenderer.invoke("dialog:openMsdsPdf"),
   extractMsdsPdf: (filePath) => ipcRenderer.invoke("msds:extract", filePath),
   extractPdf: (filePath) => ipcRenderer.invoke("pdf:extract", filePath),

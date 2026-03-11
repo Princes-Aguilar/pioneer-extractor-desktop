@@ -35,8 +35,9 @@ export default function MenuScreen({ store, actions }) {
       <Tabs tabs={tabs} activeKey={active} onChange={setActive} />
 
       <main style={styles.panel}>
-        {active === "extract-msds" && <ExtractMsdsTab />}
-
+        {active === "extract-msds" && (
+          <ExtractMsdsTab store={store} actions={actions} />
+        )}
         {active === "extract" && <ExtractTab store={store} actions={actions} />}
 
         {active === "all" && (

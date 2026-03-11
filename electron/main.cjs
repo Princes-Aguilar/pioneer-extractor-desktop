@@ -108,6 +108,58 @@ ipcMain.handle("pdf:extract", async (_event, filePath) => {
   }
 });
 
+ipcMain.handle("dialog:openMsdsPdfs", async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ["openFile", "multiSelections"],
+    filters: [{ name: "PDF", extensions: ["pdf"] }],
+  });
+
+  if (result.canceled) return [];
+  return result.filePaths || [];
+});
+
+ipcMain.handle("msds:extractMany", async (_event, filePaths) => {
+  try {
+    const list = Array.isArray(filePaths) ? filePaths.filter(Boolean) : [];
+    if (list.length === 0) {
+      return { ok: false, error: "No MSDS PDF files selected." };
+    }
+
+    const pythonCmd = process.platform === "win32" ? "python" : "python3";
+    const scriptPath = path.join(__dirname, "..", "python", "extract_msds.py");
+
+    const results = [];
+
+    for (const filePath of list) {
+      const result = await runPythonJson(pythonCmd, scriptPath, [filePath]);
+
+      if (result?.ok && result?.item) {
+        results.push({
+          ok: true,
+          filePath,
+          fileName: result.fileName,
+          ...result.item,
+        });
+      } else {
+        results.push({
+          ok: false,
+          filePath,
+          fileName: path.basename(filePath),
+          error: result?.error || "MSDS extraction failed.",
+        });
+      }
+    }
+
+    return {
+      ok: true,
+      items: results,
+      count: results.length,
+    };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+});
+
 ipcMain.handle("dialog:openXlsx", async () => {
   const result = await dialog.showOpenDialog({
     properties: ["openFile"],

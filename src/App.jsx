@@ -5,12 +5,18 @@ import MenuScreen from "./screens/MenuScreen.jsx";
 export default function App() {
   const [screen, setScreen] = useState("start");
 
-  // In-memory only for now
+  // Main saved shipment items
   const [savedItems, setSavedItems] = useState(() => []);
   const [selectedFile, setSelectedFile] = useState(null);
 
   // Preview after extraction, before saving
   const [extractedPreview, setExtractedPreview] = useState(null);
+
+  // ✅ Save metadata per PRO||SOI||DEST (used by LOI / Preadvise reuse)
+  const [docMetaByGroup, setDocMetaByGroup] = useState(() => ({}));
+
+  // ✅ Saved MSDS extracted records
+  const [savedMsdsItems, setSavedMsdsItems] = useState(() => []);
 
   const actions = useMemo(() => {
     return {
@@ -19,11 +25,29 @@ export default function App() {
 
       setSelectedFile: (file) => setSelectedFile(file),
 
-      // used by ExtractTab.jsx
+      // Extract preview
       setExtractedPreview: (preview) => setExtractedPreview(preview),
       clearPreview: () => setExtractedPreview(null),
 
-      // used by AllPioneerTab.jsx (Edit → Save)
+      // ✅ Save reusable doc metadata for a group
+      saveDocMeta: ({ key, meta }) => {
+        setDocMetaByGroup((prev) => ({
+          ...prev,
+          [key]: { ...(prev[key] || {}), ...(meta || {}) },
+        }));
+      },
+
+      // ✅ Save extracted MSDS rows
+      saveExtractedMsdsItems: (items) => {
+        const clean = Array.isArray(items) ? items : [];
+        setSavedMsdsItems(clean);
+      },
+
+      clearSavedMsdsItems: () => {
+        setSavedMsdsItems([]);
+      },
+
+      // Update one saved extracted item row
       updateSavedItemRow: ({ recordId, itemIndex, patch }) => {
         setSavedItems((prev) =>
           prev.map((rec) => {
@@ -39,7 +63,7 @@ export default function App() {
         );
       },
 
-      // + Add row at TOP of the FIRST record
+      // Add row at top of first record
       addSavedItemRowTop: () => {
         setSavedItems((prev) => {
           if (!prev.length) return prev;
@@ -54,7 +78,6 @@ export default function App() {
             grossWeight: null,
             fileName: first.fileName || "",
 
-            // keep same header info for that record
             proNumber: first.proNumber || "",
             soiNumber: first.soiNumber || "",
             destination: first.destination || "",
@@ -83,6 +106,7 @@ export default function App() {
         });
       },
 
+      // DG Dec generation
       generateDGDec: async ({
         proNumber,
         soiNumber,
@@ -110,6 +134,7 @@ export default function App() {
         return res;
       },
 
+      // Preadvise generation
       generatePreadvise: async (payload) => {
         const res = await window.pioneer.generatePreadvise(payload);
         if (!res?.ok) {
@@ -118,6 +143,27 @@ export default function App() {
         return res;
       },
 
+      // ✅ LOI generation
+      generateLOI: async (payload) => {
+        const res = await window.pioneer.generateLOI(payload);
+        if (!res?.ok) {
+          throw new Error(res?.error || "LOI generation failed.");
+        }
+        return res;
+      },
+
+      // ✅ Non-DG Cert generation
+      generateNonDGCert: async (payload) => {
+        const res = await window.pioneer.generateNonDGCert(payload);
+        if (!res?.ok) {
+          throw new Error(
+            res?.error || "Non-DG Certification generation failed.",
+          );
+        }
+        return res;
+      },
+
+      // Extract XLSX
       extractSelectedXlsx: async () => {
         if (!selectedFile) throw new Error("No file selected.");
 
@@ -139,9 +185,13 @@ export default function App() {
           numberOfItemsExtracted:
             result.numberOfItemsExtracted ?? (result.items?.length || 0),
           debug: result.debug,
+          proNumber: result.proNumber || "",
+          soiNumber: result.soiNumber || "",
+          destination: result.destination || "",
         });
       },
 
+      // Extract PDF
       extractSelectedPdf: async () => {
         if (!selectedFile) throw new Error("No file selected.");
 
@@ -172,9 +222,13 @@ export default function App() {
           numberOfItemsExtracted:
             result.numberOfItemsExtracted ?? (result.items?.length || 0),
           debug: result.debug,
+          proNumber: result.proNumber || "",
+          soiNumber: result.soiNumber || "",
+          destination: result.destination || "",
         });
       },
 
+      // Save extracted preview into savedItems
       proceedSaveExtracted: () => {
         if (!extractedPreview) return;
 
@@ -226,6 +280,7 @@ export default function App() {
         setSelectedFile(null);
       },
 
+      // Delete group in Per So Per Pro
       deletePerSoProGroup: ({ proNumber, soiNumber, destination }) => {
         const pro = (proNumber || "").toString().trim() || "—";
         const soi = (soiNumber || "").toString().trim() || "—";
@@ -241,13 +296,31 @@ export default function App() {
             return !match;
           }),
         );
+
+        // optional cleanup of saved doc meta for same group
+        const key = `${pro}||${soi}||${dest}`;
+        setDocMetaByGroup((prev) => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
       },
 
-      clearAll: () => setSavedItems([]),
+      clearAll: () => {
+        setSavedItems([]);
+        setExtractedPreview(null);
+        setSelectedFile(null);
+      },
     };
   }, [selectedFile, extractedPreview]);
 
-  const store = { savedItems, selectedFile, extractedPreview };
+  const store = {
+    savedItems,
+    selectedFile,
+    extractedPreview,
+    docMetaByGroup,
+    savedMsdsItems,
+  };
 
   return (
     <div style={styles.appShell}>
