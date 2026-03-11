@@ -54,6 +54,35 @@ ipcMain.handle("dialog:openPdf", async () => {
   return result.filePaths[0];
 });
 
+ipcMain.handle("dialog:openMsdsPdf", async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ["openFile"],
+    filters: [{ name: "PDF", extensions: ["pdf"] }],
+  });
+
+  if (result.canceled) return null;
+  return result.filePaths[0];
+});
+
+ipcMain.handle("msds:extract", async (_event, filePath) => {
+  try {
+    if (!filePath) throw new Error("No filePath received.");
+
+    const pythonCmd = process.platform === "win32" ? "python" : "python3";
+    const scriptPath = path.join(__dirname, "..", "python", "extract_msds.py");
+
+    const result = await runPythonJson(pythonCmd, scriptPath, [filePath]);
+
+    if (!result?.ok) {
+      return { ok: false, error: result?.error || "MSDS extraction failed." };
+    }
+
+    return result;
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+});
+
 // ---------- IPC: Extract PDF ----------
 ipcMain.handle("pdf:extract", async (_event, filePath) => {
   try {

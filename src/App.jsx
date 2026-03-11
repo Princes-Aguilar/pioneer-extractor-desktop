@@ -11,8 +11,6 @@ export default function App() {
 
   // Preview after extraction, before saving
   const [extractedPreview, setExtractedPreview] = useState(null);
-  // ✅ Persist doc info per PRO||SOI||DEST (used by LOI, etc.)
-  const [docMetaByGroup, setDocMetaByGroup] = useState(() => ({}));
 
   const actions = useMemo(() => {
     return {
@@ -56,7 +54,7 @@ export default function App() {
             grossWeight: null,
             fileName: first.fileName || "",
 
-            // ✅ keep same header info for that record
+            // keep same header info for that record
             proNumber: first.proNumber || "",
             soiNumber: first.soiNumber || "",
             destination: first.destination || "",
@@ -92,10 +90,7 @@ export default function App() {
         item,
         items,
       }) => {
-        // Allow either item (single) or items (array)
         const list = Array.isArray(items) ? items : item ? [item] : [];
-
-        // Remove null/undefined and require object
         const clean = list.filter((x) => x && typeof x === "object");
 
         if (clean.length === 0) {
@@ -109,18 +104,20 @@ export default function App() {
           items: clean,
         });
 
-        if (!res?.ok)
+        if (!res?.ok) {
           throw new Error(res?.error || "DG Dec generation failed.");
+        }
         return res;
       },
 
       generatePreadvise: async (payload) => {
         const res = await window.pioneer.generatePreadvise(payload);
-        if (!res?.ok)
+        if (!res?.ok) {
           throw new Error(res?.error || "Pre-advise generation failed.");
+        }
         return res;
       },
-      // Optional: if you still use XLSX
+
       extractSelectedXlsx: async () => {
         if (!selectedFile) throw new Error("No file selected.");
 
@@ -178,7 +175,6 @@ export default function App() {
         });
       },
 
-      // ✅ Save extracted preview into savedItems (includes PRO/SOI/Destination + DG fields)
       proceedSaveExtracted: () => {
         if (!extractedPreview) return;
 
@@ -197,19 +193,16 @@ export default function App() {
           outerType: "",
         };
 
-        // ✅ read header fields from preview
         const proNumber = (extractedPreview.proNumber || "").toString().trim();
         const soiNumber = (extractedPreview.soiNumber || "").toString().trim();
         const destination = (extractedPreview.destination || "")
           .toString()
           .trim();
 
-        // ✅ normalize items to ensure DG + pro/soi/destination exist on every row
         const normalizedItems = (extractedPreview.items || []).map((it) => ({
           ...defaultDGFields,
           ...it,
           fileName: it.fileName ?? extractedPreview.fileName ?? "",
-
           proNumber: (it.proNumber ?? proNumber) || "",
           soiNumber: (it.soiNumber ?? soiNumber) || "",
           destination: (it.destination ?? destination) || "",
@@ -219,12 +212,9 @@ export default function App() {
           id: crypto.randomUUID(),
           fileName: extractedPreview.fileName,
           addedAt: new Date().toISOString(),
-
-          // ✅ store at record level too (used by PerSoPro grouping)
           proNumber,
           soiNumber,
           destination,
-
           extractedItems: normalizedItems,
           numberOfItemsExtracted:
             extractedPreview.numberOfItemsExtracted ?? normalizedItems.length,
@@ -232,12 +222,10 @@ export default function App() {
 
         setSavedItems((prev) => [record, ...prev]);
 
-        // reset after save
         setExtractedPreview(null);
         setSelectedFile(null);
       },
 
-      // ✅ DELETE: removes the whole block (all records matching PRO+SOI+Destination)
       deletePerSoProGroup: ({ proNumber, soiNumber, destination }) => {
         const pro = (proNumber || "").toString().trim() || "—";
         const soi = (soiNumber || "").toString().trim() || "—";
@@ -250,23 +238,17 @@ export default function App() {
             const recDest = (rec.destination || "").toString().trim() || "—";
 
             const match = recPro === pro && recSoi === soi && recDest === dest;
-            return !match; // keep only non-matching records
+            return !match;
           }),
         );
       },
-      // ✅ Save doc metadata (vessel/booking/etc.) for a PRO||SOI||DEST group
-      saveDocMeta: ({ key, meta }) => {
-        setDocMetaByGroup((prev) => ({
-          ...prev,
-          [key]: { ...(prev[key] || {}), ...(meta || {}) },
-        }));
-      },
-      // optional helper
+
       clearAll: () => setSavedItems([]),
     };
   }, [selectedFile, extractedPreview]);
 
-  const store = { savedItems, selectedFile, extractedPreview, docMetaByGroup };
+  const store = { savedItems, selectedFile, extractedPreview };
+
   return (
     <div style={styles.appShell}>
       {screen === "start" ? (

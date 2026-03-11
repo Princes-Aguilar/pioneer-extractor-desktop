@@ -4,11 +4,13 @@ import ExtractTab from "../components/ExtractTab.jsx";
 import AllPioneerItemsTab from "../components/AllPioneerItemsTab.jsx";
 import PerSoProItemsTab from "../components/PerSoProItemsTab.jsx";
 import AutoDocsGenTab from "../components/AutoDocsGenTab.jsx";
+import ExtractMsdsTab from "../ExtractMsdsTab.jsx";
 
 export default function MenuScreen({ store, actions }) {
   const [active, setActive] = useState("extract");
 
   const tabs = [
+    { key: "extract-msds", label: "Extract MSDS" },
     { key: "extract", label: "Extract" },
     { key: "all", label: "All Pioneer Items" },
     { key: "persopro", label: "PER SO and PRO Items" },
@@ -33,16 +35,21 @@ export default function MenuScreen({ store, actions }) {
       <Tabs tabs={tabs} activeKey={active} onChange={setActive} />
 
       <main style={styles.panel}>
+        {active === "extract-msds" && <ExtractMsdsTab />}
+
         {active === "extract" && <ExtractTab store={store} actions={actions} />}
+
         {active === "all" && (
           <AllPioneerItemsTab store={store} actions={actions} />
         )}
+
         {active === "persopro" && (
           <PerSoProItemsTab store={store} actions={actions} />
-        )}{" "}
+        )}
+
         {active === "autodocs" && (
           <AutoDocsGenTab store={store} actions={actions} />
-        )}{" "}
+        )}
       </main>
     </div>
   );
