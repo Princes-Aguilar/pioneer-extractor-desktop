@@ -1,84 +1,29 @@
 import React, { useMemo, useState } from "react";
 
-export default function AllPioneerTab({ store, actions }) {
+export default function AllPioneerItemsTab({ store, actions }) {
   const [editingKey, setEditingKey] = useState(null);
   const [draft, setDraft] = useState(null);
 
-  const handleAdd = () => {
-    if (!store.savedItems?.length) {
-      alert("No saved records yet. Extract and Save first.");
-      return;
-    }
-    if (!actions?.addSavedItemRowTop) {
-      alert("addSavedItemRowTop action is missing in App.jsx.");
-      return;
-    }
-
-    actions.addSavedItemRowTop();
-
-    // open edit mode for the newly inserted top row (record 0, item 0)
-    const recordId = store.savedItems[0].id;
-    const rowKey = `${recordId}::0`;
-
-    setEditingKey(rowKey);
-    setDraft({
-      rowKey,
-      recordId,
-      itemIndex: 0,
-      description: "",
-      fileName: "",
-
-      hsCode: "",
-      dgStatus: "",
-      unNumber: "",
-      classNumber: "",
-      packingGroup: "",
-      flashPoint: "",
-      properShippingName: "",
-      technicalName: "",
-      ems: "",
-      marinePollutant: "",
-      innerType: "",
-      outerType: "",
-    });
-  };
-
-  // -----------------------------
-  // Helpers: normalize + clean description
-  // -----------------------------
   const normSpaces = (s) => (s ?? "").toString().replace(/\s+/g, " ").trim();
 
-  // Remove common measurement patterns from a product description.
-  // This is intentionally conservative; you can add more patterns later.
   const cleanDescription = (input) => {
     let s = normSpaces(input).toUpperCase();
 
-    // remove content inside parentheses (often pack/size notes)
     s = s.replace(/\([^)]*\)/g, " ");
-
-    // normalize separators
     s = s.replace(/[•·]/g, " ");
-
-    // remove dimension patterns like 10X20, 10 X 20, 10×20
     s = s.replace(/\b\d+(\.\d+)?\s*(X|\*|×)\s*\d+(\.\d+)?\b/g, " ");
-
-    // remove fractions like 1/4 (often sizes)
     s = s.replace(/\b\d+\s*\/\s*\d+\b/g, " ");
 
-    // remove numbers + units (ML/L/G/KG/etc.)
     s = s.replace(
       /\b\d+(\.\d+)?\s*(ML|L|LTR|LITRE|LITER|G|GRAM|GRAMS|KG|KGS|MG|OZ|LB|LBS|GAL|GALLON|GALLONS|CC|CM|MM|M|IN|INCH|INCHES|FT|FEET|YD|PCS|PC|PIECE|PIECES|SET|SETS|PACK|PACKS|PAIR|PAIRS|PINT|QUART|QT|ROLL|ROLLS)\b/g,
       " ",
     );
 
-    // remove things like "500/BOX", "10/PK"
     s = s.replace(
       /\b\d+\s*\/\s*(BOX|PK|PACK|CT|CASE|BAG|SACK|DRUM|PALLET|ROLL)\b/g,
       " ",
     );
 
-    // ✅ NEW: remove common color words (add more anytime)
-    // This collapses: "GLOSS WHITE" and "GLOSS ULTRAMARINE" -> "GLOSS"
     const COLORS = [
       "PIONEER ",
       "PIONEER",
@@ -121,102 +66,113 @@ export default function AllPioneerTab({ store, actions }) {
       "ROYAL",
     ];
 
-    // remove phrases like "OFF WHITE", "LIGHT BLUE", "DARK GRAY"
     s = s.replace(
       /\b(LIGHT|DARK|DEEP|PALE|BRIGHT|MATTE|GLOSS|GLOSSY)\s+(WHITE|BLACK|RED|BLUE|GREEN|YELLOW|ORANGE|GRAY|GREY|SILVER|GOLD|BEIGE|CREAM|IVORY|NAVY|TEAL|TURQUOISE|MAROON|MAGENTA|CYAN|LIME|OLIVE|TAN|BRONZE|COPPER|PEARL|CLEAR|TRANSPARENT|ULTRAMARINE)\b/g,
       " ",
     );
 
-    // remove single color tokens
     const colorRegex = new RegExp(`\\b(${COLORS.join("|")})\\b`, "g");
     s = s.replace(colorRegex, " ");
 
-    // optional: remove leftover standalone numbers (comment out if you have model codes like "LOCTITE 243")
     s = s.replace(/\b\d+(\.\d+)?\b/g, " ");
-
-    // final cleanup
     s = s.replace(/[^A-Z0-9\s\-]/g, " ");
     s = normSpaces(s);
-
-    // ✅ If you want to remove trailing leftover words like LITERS/LITER too (just in case)
     s = s.replace(/\b(LITER|LITRE|LITERS|LITRES)\b/g, " ");
     s = normSpaces(s);
 
     return s;
   };
+
   const makeKey = (descClean) => descClean.toLowerCase();
 
-  // -----------------------------
-  // Build UNIQUE rows for All Pioneer
-  // -----------------------------
+  const handleAdd = () => {
+    if (!actions?.addSavedMsdsRowTop) {
+      alert("addSavedMsdsRowTop action is missing in App.jsx.");
+      return;
+    }
+
+    const newId = actions.addSavedMsdsRowTop();
+    if (!newId) return;
+
+    const rowKey = newId;
+
+    setEditingKey(rowKey);
+    setDraft({
+      rowKey,
+      id: newId,
+      description: "",
+      descriptionClean: "",
+      fileName: "",
+
+      hsCode: "",
+      dgStatus: "",
+      unNumber: "",
+      classNumber: "",
+      packingGroup: "",
+      flashPoint: "",
+      properShippingName: "",
+      technicalName: "",
+      ems: "",
+      marinePollutant: "",
+      innerType: "",
+      outerType: "",
+    });
+  };
+
   const rows = useMemo(() => {
     const out = [];
     const seen = new Set();
 
-    // savedItems is newest-first (based on your save logic)
-    // so the first time we see a product, we keep the newest one.
-    for (const rec of store.savedItems || []) {
-      const items = rec.extractedItems || [];
+    for (const it of store?.savedMsdsItems || []) {
+      const rawDesc = it.description ?? it.descriptionClean ?? "";
+      const descClean = cleanDescription(rawDesc);
+      const finalClean = descClean || normSpaces(rawDesc).toUpperCase() || "—";
 
-      for (let i = 0; i < items.length; i++) {
-        const it = items[i];
+      const isBlank = !normSpaces(rawDesc);
+      const key = isBlank ? `__NEW__${it.id}` : makeKey(finalClean);
 
-        const rawDesc = it.description ?? "";
-        const descClean = cleanDescription(rawDesc);
+      if (seen.has(key)) continue;
+      seen.add(key);
 
-        // If cleaning wipes everything, fall back to raw
-        const finalClean =
-          descClean || normSpaces(rawDesc).toUpperCase() || "—";
+      out.push({
+        rowKey: it.id,
+        id: it.id,
 
-        const isBlank = !normSpaces(rawDesc);
-        const key = isBlank ? `__NEW__${rec.id}::${i}` : makeKey(finalClean);
-        if (seen.has(key)) continue;
-        seen.add(key);
+        descriptionClean: finalClean,
+        descriptionRaw: normSpaces(rawDesc),
 
-        out.push({
-          rowKey: `${rec.id}::${i}`,
-          recordId: rec.id,
-          itemIndex: i,
-
-          // show cleaned description, but keep raw for tooltip/debug
-          descriptionClean: finalClean,
-          descriptionRaw: normSpaces(rawDesc),
-
-          // keep other fields (you can decide what to show in this unique list)
-          hsCode: it.hsCode ?? "",
-          dgStatus: it.dgStatus ?? "",
-          unNumber: it.unNumber ?? "",
-          classNumber: it.classNumber ?? "",
-          packingGroup: it.packingGroup ?? "",
-          flashPoint: it.flashPoint ?? "",
-          properShippingName: it.properShippingName ?? "",
-          technicalName: it.technicalName ?? "",
-          ems: it.ems ?? "",
-          marinePollutant: it.marinePollutant ?? "",
-          innerType: it.innerType ?? "",
-          outerType: it.outerType ?? "",
-        });
-      }
+        hsCode: it.hsCode ?? "",
+        dgStatus: it.dgStatus ?? "",
+        unNumber: it.unNumber ?? "",
+        classNumber: it.classNumber ?? "",
+        packingGroup: it.packingGroup ?? "",
+        flashPoint: it.flashPoint ?? "",
+        properShippingName: it.properShippingName ?? "",
+        technicalName: it.technicalName ?? "",
+        ems: it.ems ?? "",
+        marinePollutant: it.marinePollutant ?? "",
+        innerType: it.innerType ?? "",
+        outerType: it.outerType ?? "",
+        fileName: it.fileName ?? "",
+      });
     }
-    // Sort alphabetically by cleaned description
+
     out.sort((a, b) =>
       (a.descriptionClean || "").localeCompare(
         b.descriptionClean || "",
         undefined,
-        { sensitivity: "base" }, // ignore case
+        { sensitivity: "base" },
       ),
     );
 
     return out;
-    return out;
-  }, [store.savedItems]);
+  }, [store?.savedMsdsItems]);
 
   const startEdit = (row) => {
     setEditingKey(row.rowKey);
-    // edit the cleaned description as the "description" field (saves into original item)
     setDraft({
       ...row,
-      description: row.descriptionClean,
+      description: row.descriptionRaw || row.descriptionClean || "",
     });
   };
 
@@ -225,15 +181,39 @@ export default function AllPioneerTab({ store, actions }) {
     setDraft(null);
   };
 
+  const deleteRow = (row) => {
+    if (!actions?.deleteSavedMsdsRow) {
+      alert("deleteSavedMsdsRow action is missing in App.jsx.");
+      return;
+    }
+
+    const ok = window.confirm(
+      `Delete this item?\n\n${row.descriptionClean || row.descriptionRaw || "Untitled item"}`,
+    );
+    if (!ok) return;
+
+    actions.deleteSavedMsdsRow({ rowId: row.id });
+
+    if (editingKey === row.rowKey) {
+      setEditingKey(null);
+      setDraft(null);
+    }
+  };
+
   const saveEdit = () => {
     if (!draft) return;
 
-    actions.updateSavedItemRow({
-      recordId: draft.recordId,
-      itemIndex: draft.itemIndex,
+    if (!actions?.updateSavedMsdsRow) {
+      alert("updateSavedMsdsRow action is missing in App.jsx.");
+      return;
+    }
+
+    actions.updateSavedMsdsRow({
+      rowId: draft.id,
       patch: {
-        // Save what user edited as the item description (stored)
         description: normSpaces(draft.description),
+        descriptionClean: cleanDescription(draft.description),
+
         hsCode: normSpaces(draft.hsCode),
         dgStatus: normSpaces(draft.dgStatus),
         unNumber: normSpaces(draft.unNumber),
@@ -253,7 +233,7 @@ export default function AllPioneerTab({ store, actions }) {
     setDraft(null);
   };
 
-  const COLS = 13;
+  const COLS = 14;
 
   return (
     <div style={styles.wrap}>
@@ -272,9 +252,10 @@ export default function AllPioneerTab({ store, actions }) {
           </div>
 
           <p style={styles.p}>
-            Unique items only (measurements removed). Edit any row.
+            Unique items from MSDS save. Edit rows or add new items manually.
           </p>
         </div>
+
         <button style={styles.ghostBtn} onClick={handleAdd}>
           + Add
         </button>
@@ -306,7 +287,7 @@ export default function AllPioneerTab({ store, actions }) {
               {rows.length === 0 ? (
                 <tr>
                   <td style={styles.tdMuted} colSpan={COLS}>
-                    No saved items yet.
+                    No MSDS-saved items yet.
                   </td>
                 </tr>
               ) : (
@@ -369,9 +350,14 @@ export default function AllPioneerTab({ store, actions }) {
                           <input
                             style={styles.input}
                             value={draft.unNumber}
-                            onChange={(e) =>
-                              setDraft({ ...draft, unNumber: e.target.value })
-                            }
+                            onChange={(e) => {
+                              const nextUn = e.target.value;
+                              setDraft({
+                                ...draft,
+                                unNumber: nextUn,
+                                dgStatus: nextUn.trim() ? "DG" : "Non-DG",
+                              });
+                            }}
                           />
                         ) : (
                           r.unNumber || "—"
@@ -525,12 +511,21 @@ export default function AllPioneerTab({ store, actions }) {
 
                       <td style={styles.td}>
                         {!isEditing ? (
-                          <button
-                            style={styles.ghostBtn}
-                            onClick={() => startEdit(r)}
-                          >
-                            Edit
-                          </button>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button
+                              style={styles.ghostBtn}
+                              onClick={() => startEdit(r)}
+                            >
+                              Edit
+                            </button>
+
+                            <button
+                              style={styles.deleteBtn}
+                              onClick={() => deleteRow(r)}
+                            >
+                              Delete
+                            </button>
+                          </div>
                         ) : (
                           <div style={{ display: "flex", gap: 8 }}>
                             <button
@@ -557,7 +552,7 @@ export default function AllPioneerTab({ store, actions }) {
         </div>
 
         <div style={styles.note}>
-          Showing <b>{rows.length}</b> unique items (measurements removed).
+          Showing <b>{rows.length}</b> unique MSDS items.
         </div>
       </div>
     </div>
@@ -574,6 +569,14 @@ const styles = {
   },
   h2: { margin: 0, fontSize: 22 },
   p: { margin: "6px 0 0 0", color: "#bdbdbd" },
+  pill: {
+    padding: "5px 10px",
+    borderRadius: 999,
+    background: "#1a1a1a",
+    border: "1px solid #2b2b2b",
+    color: "#d8d8d8",
+    fontSize: 12,
+  },
 
   card: {
     padding: 16,
@@ -622,6 +625,14 @@ const styles = {
     border: "1px solid #2b2b2b",
     background: "transparent",
     color: "#fff",
+    borderRadius: 10,
+    cursor: "pointer",
+  },
+  deleteBtn: {
+    padding: "9px 12px",
+    border: "1px solid #5a1f1f",
+    background: "#2a1111",
+    color: "#ffcece",
     borderRadius: 10,
     cursor: "pointer",
   },

@@ -40,11 +40,102 @@ export default function App() {
       // ✅ Save extracted MSDS rows
       saveExtractedMsdsItems: (items) => {
         const clean = Array.isArray(items) ? items : [];
-        setSavedMsdsItems(clean);
+
+        const mapped = clean.map((it, idx) => {
+          const unNumber = (it.unNumber || "").toString().trim();
+          const description = (it.product || "").toString().trim();
+          const fileName = (it.fileName || "").toString().trim();
+
+          return {
+            id: it.id || crypto.randomUUID(),
+            description,
+            descriptionClean: description,
+            hsCode: it.hsCode || "",
+            dgStatus: it.dgStatus || (unNumber ? "DG" : "Non-DG"),
+            unNumber,
+            classNumber: it.classNumber || "",
+            packingGroup: it.packingGroup || "",
+            flashPoint: it.flashPoint || "",
+            properShippingName: it.properShippingName || "",
+            technicalName: it.technicalName || "",
+            ems: it.ems || "",
+            marinePollutant: it.marinePollutant || "",
+            innerType: it.innerType || "",
+            outerType: it.outerType || "",
+            fileName,
+            source: "msds",
+            addedAt: new Date().toISOString(),
+            _row: idx,
+          };
+        });
+
+        setSavedMsdsItems((prev) => {
+          const seen = new Set(
+            prev.map(
+              (x) =>
+                `${String(x.description || "")
+                  .trim()
+                  .toUpperCase()}||${String(x.fileName || "")
+                  .trim()
+                  .toUpperCase()}`,
+            ),
+          );
+
+          const toAdd = mapped.filter((x) => {
+            const key = `${String(x.description || "")
+              .trim()
+              .toUpperCase()}||${String(x.fileName || "")
+              .trim()
+              .toUpperCase()}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+
+          return [...prev, ...toAdd];
+        });
       },
 
       clearSavedMsdsItems: () => {
         setSavedMsdsItems([]);
+      },
+
+      addSavedMsdsRowTop: () => {
+        const newId = crypto.randomUUID();
+
+        const newRow = {
+          id: newId,
+          description: "",
+          descriptionClean: "",
+          hsCode: "",
+          dgStatus: "Non-DG", // default until user enters UN number
+          unNumber: "",
+          classNumber: "",
+          packingGroup: "",
+          flashPoint: "",
+          properShippingName: "",
+          technicalName: "",
+          ems: "",
+          marinePollutant: "",
+          innerType: "",
+          outerType: "",
+          fileName: "",
+          source: "msds",
+          addedAt: new Date().toISOString(),
+        };
+
+        setSavedMsdsItems((prev) => [newRow, ...prev]);
+        return newId;
+      },
+
+      updateSavedMsdsRow: ({ rowId, patch }) => {
+        setSavedMsdsItems((prev) =>
+          prev.map((row) => (row.id === rowId ? { ...row, ...patch } : row)),
+        );
+      },
+
+      deleteSavedMsdsRow: ({ rowId }) => {
+        setSavedMsdsItems((prev) => prev.filter((row) => row.id !== rowId));
       },
 
       // Update one saved extracted item row
