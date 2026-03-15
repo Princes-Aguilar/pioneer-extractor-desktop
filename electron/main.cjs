@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { spawn } = require("child_process");
@@ -399,69 +399,106 @@ ipcMain.handle("generate-preadvise", async (_event, payload) => {
 });
 
 ipcMain.handle("generate-loi", async (_event, payload) => {
-  const pythonCmd = process.platform === "win32" ? "python" : "python3";
-  const projectRoot = app.getAppPath();
-
-  const templatePath = path.join(
-    projectRoot,
-    "python",
-    "templates",
-    "Letter_of_Indemnity.docx",
-  );
-
-  if (!fs.existsSync(templatePath)) {
-    return { ok: false, error: `Template not found: ${templatePath}` };
-  }
-
-  const outDir = path.join(app.getPath("downloads"), "pioneer-loi");
-  fs.mkdirSync(outDir, { recursive: true });
-
-  const pro = String(payload?.proNumber || "").trim() || "PRO";
-  const soi = String(payload?.soiNumber || "").trim() || "SOI";
-  const dest = String(payload?.destination || "").trim() || "DEST";
-
-  const outPath = path.join(
-    outDir,
-    `${pro}_${soi}_${dest}_LOI.docx`.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_"),
-  );
-
-  const scriptPath = path.join(
-    projectRoot,
-    "python",
-    "generate_loi_docx_cli.py",
-  );
-
-  // Write payload to a temp json file (cleaned up in finally)
-  const tempJson = path.join(outDir, `payload_${Date.now()}.json`);
-  fs.writeFileSync(tempJson, JSON.stringify(payload, null, 2), "utf-8");
-
   try {
-    await new Promise((resolve, reject) => {
+    const pythonCmd =
+      process.platform === "win32"
+        ? path.join(
+            app.getAppPath(),
+            "python",
+            ".venv",
+            "Scripts",
+            "python.exe",
+          )
+        : "python3";
+
+    const projectRoot = app.getAppPath();
+
+    const templatePath = path.join(
+      projectRoot,
+      "python",
+      "templates",
+      "Letter_of_Indemnity.docx",
+    );
+
+    if (!fs.existsSync(templatePath)) {
+      return { ok: false, error: `Template not found: ${templatePath}` };
+    }
+
+    const scriptPath = path.join(
+      projectRoot,
+      "python",
+      "generate_loi_docx_cli.py",
+    );
+
+    if (!fs.existsSync(scriptPath)) {
+      return { ok: false, error: `Script not found: ${scriptPath}` };
+    }
+
+    const outDir = path.join(app.getPath("downloads"), "pioneer-loi");
+    fs.mkdirSync(outDir, { recursive: true });
+
+    const pro = String(payload?.proNumber || "").trim() || "PRO";
+    const soi = String(payload?.soiNumber || "").trim() || "SOI";
+    const dest = String(payload?.destination || "").trim() || "DEST";
+
+    const outPath = path.join(
+      outDir,
+      `${pro}_${soi}_${dest}_LOI.docx`.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_"),
+    );
+
+    const tempJson = path.join(outDir, `payload_${Date.now()}.json`);
+    fs.writeFileSync(tempJson, JSON.stringify(payload, null, 2), "utf-8");
+
+    const result = await new Promise((resolve, reject) => {
       const proc = spawn(
         pythonCmd,
         [scriptPath, templatePath, outPath, tempJson],
-        {
-          windowsHide: true,
-        },
+        { windowsHide: true },
       );
 
-      let err = "";
-      proc.stderr.on("data", (d) => (err += d.toString()));
+      let stdout = "";
+      let stderr = "";
+
+      proc.stdout.on("data", (d) => {
+        stdout += d.toString();
+      });
+
+      proc.stderr.on("data", (d) => {
+        stderr += d.toString();
+      });
+
       proc.on("error", reject);
+
       proc.on("close", (code) => {
-        if (code === 0) resolve();
-        else reject(new Error(err || `LOI generation failed (code ${code})`));
+        resolve({ code, stdout, stderr });
       });
     });
 
-    return { ok: true, outPath };
-  } catch (err) {
-    return { ok: false, error: err?.message || String(err) };
-  } finally {
-    // ✅ delete the temp payload file so it doesn't clutter Downloads
     try {
       if (fs.existsSync(tempJson)) fs.unlinkSync(tempJson);
     } catch (_) {}
+
+    if (result.code !== 0) {
+      return {
+        ok: false,
+        error:
+          result.stderr ||
+          result.stdout ||
+          `LOI generation failed (code ${result.code})`,
+      };
+    }
+
+    if (!fs.existsSync(outPath)) {
+      return {
+        ok: false,
+        error: `LOI generation reported success but file was not created: ${outPath}`,
+      };
+    }
+
+    // await shell.openPath(outPath);
+    return { ok: true, outPath };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
   }
 });
 

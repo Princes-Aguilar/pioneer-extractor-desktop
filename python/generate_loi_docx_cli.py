@@ -2,44 +2,66 @@ import json
 import sys
 from docx import Document
 
+
 def parse_number(v):
     if v is None:
         return 0.0
     s = str(v).replace(",", "").strip()
     out = ""
     dot = False
+    started = False
+
     for ch in s:
         if ch.isdigit():
             out += ch
+            started = True
         elif ch == "." and not dot:
             out += "."
             dot = True
-        elif out:
+            started = True
+        elif started:
             break
+
     try:
         return float(out) if out else 0.0
-    except:
+    except Exception:
         return 0.0
+
 
 def fmt2(x):
     try:
         return f"{float(x or 0):,.2f}"
-    except:
+    except Exception:
         return "0.00"
+
+
+def _replace_in_paragraph_runs(paragraph, mapping: dict):
+    if not paragraph.runs:
+        return
+
+    full = "".join(run.text for run in paragraph.runs)
+    new = full
+
+    for key, val in mapping.items():
+        if key in new:
+            new = new.replace(key, str(val))
+
+    if new != full:
+        paragraph.runs[0].text = new
+        for r in paragraph.runs[1:]:
+            r.text = ""
+
 
 def replace_all(doc, mapping):
     for p in doc.paragraphs:
-        for key, val in mapping.items():
-            if key in p.text:
-                p.text = p.text.replace(key, val)
+        _replace_in_paragraph_runs(p, mapping)
 
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 for p in cell.paragraphs:
-                    for key, val in mapping.items():
-                        if key in p.text:
-                            p.text = p.text.replace(key, val)
+                    _replace_in_paragraph_runs(p, mapping)
+
 
 def main():
     if len(sys.argv) != 4:
@@ -55,8 +77,8 @@ def main():
 
     items = payload.get("items") or []
 
-    dg_items = payload.get("dgItems") or []
-    ndg_items = payload.get("ndgItems") or []
+    dg_items = list(payload.get("dgItems") or [])
+    ndg_items = list(payload.get("ndgItems") or [])
 
     if not dg_items and not ndg_items:
         for it in items:
@@ -66,8 +88,8 @@ def main():
                 or it.get("productName")
                 or "—"
             )
-            dg = str(it.get("dgStatus","")).strip().upper()
-            if dg in ("DG","YES","Y","TRUE"):
+            dg = str(it.get("dgStatus", "")).strip().upper()
+            if dg in ("DG", "YES", "Y", "TRUE"):
                 dg_items.append(name)
             else:
                 ndg_items.append(name)
@@ -78,23 +100,27 @@ def main():
         for it in items:
             total_gw += parse_number(it.get("grossWeight"))
 
-    dg_text = "\n".join([f"{i+1}. {x}" for i, x in enumerate(dg_items)]) or "—"
-    ndg_text = "\n".join([f"{i+1}. {x}" for i, x in enumerate(ndg_items)]) or "—"
+    dg_text = "\n".join(f"{i+1}. {x}" for i, x in enumerate(dg_items)) or "—"
+    ndg_text = "\n".join(f"{i+1}. {x}" for i, x in enumerate(ndg_items)) or "—"
 
     mapping = {
         "{{DG_LIST}}": dg_text,
         "{{NDG_LIST}}": ndg_text,
         "{{TOTAL_GW}}": fmt2(total_gw),
-
         "{{VESSEL_VOYAGE}}": str(payload.get("vesselVoyage", "")),
         "{{BOOKING_NUMBER}}": str(payload.get("bookingNumber", "")),
         "{{DESTINATION}}": str(payload.get("destination", "")),
     }
 
-    doc = Document(template_path)
-    replace_all(doc, mapping)
-    doc.save(out_path)
-    print(out_path)
+    try:
+        doc = Document(template_path)
+        replace_all(doc, mapping)
+        doc.save(out_path)
+        print(out_path)
+    except Exception as e:
+        print(f"LOI generation failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

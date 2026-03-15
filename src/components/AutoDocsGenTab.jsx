@@ -176,7 +176,6 @@ function findPartVariantsForPackingItem(packingDesc, msdsPrepared) {
 
   if (bestA && bestB) return [bestA, bestB];
 
-  // no pair found, fallback to best overall single match
   const bestSingle = candidates.sort((x, y) => y._score - x._score)[0];
   return bestSingle ? [bestSingle] : [];
 }
@@ -198,7 +197,6 @@ function buildExpandedRows(rows, savedMsdsItems) {
       msdsPrepared,
     );
 
-    // if both A and B found, expand into 2 rows using 60/40
     if (matchedParts.length >= 2) {
       const a = matchedParts.find((x) => x._part === "A");
       const b = matchedParts.find((x) => x._part === "B");
@@ -211,7 +209,6 @@ function buildExpandedRows(rows, savedMsdsItems) {
           noOfBoxes: splitValue(row.noOfBoxes, 0.6),
           netWeight: splitValue(row.netWeight, 0.6),
           grossWeight: splitValue(row.grossWeight, 0.6),
-
           dgStatus: a.dgStatus || row.dgStatus || "",
           unNumber: a.unNumber || "",
           classNumber: a.classNumber || "",
@@ -233,7 +230,6 @@ function buildExpandedRows(rows, savedMsdsItems) {
           noOfBoxes: splitValue(row.noOfBoxes, 0.4),
           netWeight: splitValue(row.netWeight, 0.4),
           grossWeight: splitValue(row.grossWeight, 0.4),
-
           dgStatus: b.dgStatus || row.dgStatus || "",
           unNumber: b.unNumber || "",
           classNumber: b.classNumber || "",
@@ -252,7 +248,6 @@ function buildExpandedRows(rows, savedMsdsItems) {
       }
     }
 
-    // fallback: use one best MSDS match if available
     const single = matchedParts[0];
     if (single) {
       expanded.push({
@@ -274,7 +269,6 @@ function buildExpandedRows(rows, savedMsdsItems) {
       continue;
     }
 
-    // no match
     expanded.push(row);
   }
 
@@ -285,10 +279,8 @@ export default function AutoDocsGenTab({ store, actions }) {
   const [selectedKey, setSelectedKey] = useState(null);
   const [docMenuOpen, setDocMenuOpen] = useState(false);
   const [working, setWorking] = useState(null);
-
   const [preadviseOpen, setPreadviseOpen] = useState(false);
   const [preadviseGroup, setPreadviseGroup] = useState(null);
-
   const [uiMsg, setUiMsg] = useState(null);
 
   const groups = useMemo(() => {
@@ -579,8 +571,9 @@ export default function AutoDocsGenTab({ store, actions }) {
 
                 <button
                   style={styles.menuItem}
+                  disabled={working === `loi:${selectedGroup.key}`}
                   type="button"
-                  onClick={async () => {
+                  onClick={() => {
                     setDocMenuOpen(false);
 
                     const rows = selectedGroup.rows || [];
@@ -602,39 +595,46 @@ export default function AutoDocsGenTab({ store, actions }) {
 
                     const pickName = (r) =>
                       (
-                        r.properShippingName ||
                         r.description ||
                         r.productName ||
+                        r.properShippingName ||
                         "—"
                       )
                         .toString()
                         .trim();
 
-                    const payload = {
-                      proNumber: selectedGroup.proNumber,
-                      soiNumber: selectedGroup.soiNumber,
-                      destination: selectedGroup.destination,
-                      items: rows,
-                      dgItems: dg.map(pickName),
-                      ndgItems: ndg.map(pickName),
-                      totalGrossWeightKgs: totalGW,
-                    };
+                    const totalGW = rows.reduce((sum, r) => {
+                      return (
+                        sum + parseNumber(r.grossWeight ?? r.grossWeightKgs)
+                      );
+                    }, 0);
 
-                    const res = await window.pioneer.generateLOI(payload);
-                    if (!res?.ok) {
-                      setUiMsg(res?.error || "LOI failed.");
-                      return;
-                    }
-                    setUiMsg(`LOI saved to:\n${res.outPath}`);
+                    run(
+                      `loi:${selectedGroup.key}`,
+                      actions?.generateLOI || window.pioneer.generateLOI,
+                      {
+                        proNumber: selectedGroup.proNumber,
+                        soiNumber: selectedGroup.soiNumber,
+                        destination: selectedGroup.destination,
+                        items: rows,
+                        dgItems: dg.map(pickName),
+                        ndgItems: ndg.map(pickName),
+                        totalGrossWeightKgs: totalGW,
+                      },
+                      "LOI",
+                    );
                   }}
                 >
-                  Generate LOI
+                  {working === `loi:${selectedGroup.key}`
+                    ? "Generating..."
+                    : "Generate LOI"}
                 </button>
 
                 <button
                   style={styles.menuItem}
+                  disabled={working === `ndg:${selectedGroup.key}`}
                   type="button"
-                  onClick={async () => {
+                  onClick={() => {
                     setDocMenuOpen(false);
 
                     const rows = selectedGroup.rows || [];
@@ -659,23 +659,24 @@ export default function AutoDocsGenTab({ store, actions }) {
                           .trim(),
                       );
 
-                    const payload = {
-                      proNumber: selectedGroup.proNumber,
-                      soiNumber: selectedGroup.soiNumber,
-                      destination: selectedGroup.destination,
-                      items: rows,
-                      ndgItems,
-                    };
-
-                    const res = await window.pioneer.generateNonDGCert(payload);
-                    if (!res?.ok) {
-                      setUiMsg(res?.error || "Non-DG Certification failed.");
-                      return;
-                    }
-                    setUiMsg(`Non-DG Certification saved to:\n${res.outPath}`);
+                    run(
+                      `ndg:${selectedGroup.key}`,
+                      actions?.generateNonDGCert ||
+                        window.pioneer.generateNonDGCert,
+                      {
+                        proNumber: selectedGroup.proNumber,
+                        soiNumber: selectedGroup.soiNumber,
+                        destination: selectedGroup.destination,
+                        items: rows,
+                        ndgItems,
+                      },
+                      "Non-DG Certification",
+                    );
                   }}
                 >
-                  Generate Non-DG Cert
+                  {working === `ndg:${selectedGroup.key}`
+                    ? "Generating..."
+                    : "Generate Non-DG Cert"}
                 </button>
               </div>
             )}
