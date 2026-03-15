@@ -164,7 +164,7 @@ function findPartVariantsForPackingItem(packingDesc, msdsPrepared) {
       ...m,
       _score: intersectionCount(packingWords, m._words),
     }))
-    .filter((m) => m._score >= 2);
+    .filter((m) => m._score >= 3);
 
   if (!candidates.length) return [];
 
@@ -610,23 +610,10 @@ export default function AutoDocsGenTab({ store, actions }) {
                         .toString()
                         .trim();
 
-                    const totalGW = rows.reduce((sum, r) => {
-                      const v = String(r.grossWeight ?? "")
-                        .replace(/,/g, "")
-                        .trim();
-                      const n = parseFloat(v) || 0;
-                      return sum + n;
-                    }, 0);
-
-                    const meta =
-                      store?.docMetaByGroup?.[selectedGroup.key] || {};
-
                     const payload = {
                       proNumber: selectedGroup.proNumber,
                       soiNumber: selectedGroup.soiNumber,
                       destination: selectedGroup.destination,
-                      vesselVoyage: meta.vesselVoyage || "",
-                      bookingNumber: meta.bookingNumber || "",
                       items: rows,
                       dgItems: dg.map(pickName),
                       ndgItems: ndg.map(pickName),

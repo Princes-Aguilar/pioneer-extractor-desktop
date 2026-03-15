@@ -18,8 +18,16 @@ function fmtWeight(v) {
   });
 }
 
+function upper(s) {
+  return String(s || "")
+    .trim()
+    .toUpperCase();
+}
+
 export default function PerSoProItemsTab({ store, actions }) {
   const [selectedKey, setSelectedKey] = useState(null);
+  const [editingRowKey, setEditingRowKey] = useState(null);
+  const [draft, setDraft] = useState(null);
 
   const groups = useMemo(() => {
     const map = new Map();
@@ -31,7 +39,9 @@ export default function PerSoProItemsTab({ store, actions }) {
       const recDest = (rec?.destination ?? "").toString().trim();
 
       const items = rec?.extractedItems || [];
-      for (const it of items) {
+      for (let idx = 0; idx < items.length; idx++) {
+        const it = items[idx];
+
         const pro = (recPro || (it?.proNumber ?? "")).toString().trim();
         const soi = (recSoi || (it?.soiNumber ?? "")).toString().trim();
         const destination = (recDest || (it?.destination ?? ""))
@@ -58,6 +68,9 @@ export default function PerSoProItemsTab({ store, actions }) {
 
         const row = {
           ...it,
+          __recordId: rec.id,
+          __itemIndex: idx,
+          __rowKey: `${rec.id}::${idx}`,
           fileName: it?.fileName ?? rec?.fileName ?? "",
           proNumber: safePro,
           soiNumber: safeSoi,
@@ -66,8 +79,6 @@ export default function PerSoProItemsTab({ store, actions }) {
 
         const g = map.get(key);
         g.rows.push(row);
-
-        // ✅ totals per PRO/SOI/Destination block
         g.totalGrossWeight += parseNumber(row?.grossWeight);
         g.totalNetWeight += parseNumber(row?.netWeight);
       }
@@ -89,16 +100,12 @@ export default function PerSoProItemsTab({ store, actions }) {
 
   const handleDeleteGroup = (g) => {
     if (!actions?.deletePerSoProGroup) {
-      alert(
-        "deletePerSoProGroup action is missing. Add it in App.jsx actions first.",
-      );
+      alert("deletePerSoProGroup action is missing in App.jsx.");
       return;
     }
 
     const ok = window.confirm(
-      `Delete this group?\n\nPRO: ${g.proNumber}\nSOI: ${g.soiNumber}\nDestination: ${g.destination}\nItems: ${g.rows.length}\nGross Total: ${fmtWeight(
-        g.totalGrossWeight,
-      )}\n\nThis cannot be undone.`,
+      `Delete this group?\n\nPRO: ${g.proNumber}\nSOI: ${g.soiNumber}\nDestination: ${g.destination}`,
     );
     if (!ok) return;
 
@@ -111,7 +118,114 @@ export default function PerSoProItemsTab({ store, actions }) {
     if (selectedKey === g.key) setSelectedKey(null);
   };
 
-  // VIEW 1: Blocks
+  const startEdit = (row) => {
+    setEditingRowKey(row.__rowKey);
+    setDraft({
+      recordId: row.__recordId,
+      itemIndex: row.__itemIndex,
+      rowKey: row.__rowKey,
+
+      description: row.description || "",
+      qty: row.qty ?? "",
+      noOfBoxes: row.noOfBoxes ?? "",
+      netWeight: row.netWeight ?? "",
+      grossWeight: row.grossWeight ?? "",
+
+      dgStatus: row.dgStatus || "",
+      unNumber: row.unNumber || "",
+      classNumber: row.classNumber || "",
+      packingGroup: row.packingGroup || "",
+      flashPoint: row.flashPoint || "",
+      properShippingName: row.properShippingName || "",
+      technicalName: row.technicalName || "",
+      ems: row.ems || "",
+      marinePollutant: row.marinePollutant || "",
+      innerType: row.innerType || "",
+      outerType: row.outerType || "",
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingRowKey(null);
+    setDraft(null);
+  };
+
+  const saveEdit = () => {
+    if (!draft || !actions?.updateSavedItemRow) {
+      alert("updateSavedItemRow action is missing in App.jsx.");
+      return;
+    }
+
+    actions.updateSavedItemRow({
+      recordId: draft.recordId,
+      itemIndex: draft.itemIndex,
+      patch: {
+        description: draft.description,
+        qty: draft.qty,
+        noOfBoxes: draft.noOfBoxes,
+        netWeight: draft.netWeight,
+        grossWeight: draft.grossWeight,
+
+        dgStatus: draft.dgStatus,
+        unNumber: draft.unNumber,
+        classNumber: draft.classNumber,
+        packingGroup: draft.packingGroup,
+        flashPoint: draft.flashPoint,
+        properShippingName: draft.properShippingName,
+        technicalName: draft.technicalName,
+        ems: draft.ems,
+        marinePollutant: draft.marinePollutant,
+        innerType: draft.innerType,
+        outerType: draft.outerType,
+      },
+    });
+
+    setEditingRowKey(null);
+    setDraft(null);
+  };
+
+  const handleAddRow = () => {
+    if (!selectedGroup) return;
+    if (!actions?.addPerSoProRowTop) {
+      alert("addPerSoProRowTop action is missing in App.jsx.");
+      return;
+    }
+
+    const res = actions.addPerSoProRowTop({
+      proNumber: selectedGroup.proNumber,
+      soiNumber: selectedGroup.soiNumber,
+      destination: selectedGroup.destination,
+    });
+
+    if (!res) return;
+
+    const rowKey = `${res.recordId}::${res.itemIndex}`;
+    setEditingRowKey(rowKey);
+    setDraft({
+      recordId: res.recordId,
+      itemIndex: res.itemIndex,
+      rowKey,
+
+      description: "",
+      qty: "",
+      noOfBoxes: "",
+      netWeight: "",
+      grossWeight: "",
+
+      dgStatus: "Non-DG",
+      unNumber: "",
+      classNumber: "",
+      packingGroup: "",
+      flashPoint: "",
+      properShippingName: "",
+      technicalName: "",
+      ems: "",
+      marinePollutant: "",
+      innerType: "",
+      outerType: "",
+    });
+  };
+
   if (!selectedGroup) {
     return (
       <div style={styles.wrap}>
@@ -163,7 +277,6 @@ export default function PerSoProItemsTab({ store, actions }) {
                     e.stopPropagation();
                     handleDeleteGroup(g);
                   }}
-                  title="Delete this PRO/SOI group"
                 >
                   Delete
                 </button>
@@ -175,7 +288,6 @@ export default function PerSoProItemsTab({ store, actions }) {
     );
   }
 
-  // VIEW 2: Details
   return (
     <div style={styles.wrap}>
       <div style={styles.head}>
@@ -190,9 +302,14 @@ export default function PerSoProItemsTab({ store, actions }) {
           </div>
         </div>
 
-        <button style={styles.ghostBtn} onClick={() => setSelectedKey(null)}>
-          ← Back
-        </button>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button style={styles.primaryBtn} onClick={handleAddRow}>
+            + Add
+          </button>
+          <button style={styles.ghostBtn} onClick={() => setSelectedKey(null)}>
+            ← Back
+          </button>
+        </div>
       </div>
 
       <div style={styles.card}>
@@ -206,21 +323,298 @@ export default function PerSoProItemsTab({ store, actions }) {
                 <th style={styles.th}>Net Wt</th>
                 <th style={styles.th}>Gross Wt</th>
                 <th style={styles.th}>File Name</th>
+                <th style={styles.th}>DG/Non-DG</th>
+                <th style={styles.th}>UN No.</th>
+                <th style={styles.th}>Class</th>
+                <th style={styles.th}>Packing Group</th>
+                <th style={styles.th}>Flash Point</th>
+                <th style={styles.th}>Proper Shipping Name</th>
+                <th style={styles.th}>Technical Name</th>
+                <th style={styles.th}>EMS</th>
+                <th style={styles.th}>Marine Pollutant</th>
+                <th style={styles.th}>Inner Type</th>
+                <th style={styles.th}>Outer Type</th>
+                <th style={styles.th}></th>
               </tr>
             </thead>
-            <tbody>
-              {selectedGroup.rows.map((r, idx) => (
-                <tr key={idx}>
-                  <td style={styles.td}>{r.description || "—"}</td>
-                  <td style={styles.td}>{r.qty ?? "—"}</td>
-                  <td style={styles.td}>{r.noOfBoxes ?? "—"}</td>
-                  <td style={styles.td}>{r.netWeight ?? "—"}</td>
-                  <td style={styles.td}>{r.grossWeight ?? "—"}</td>
-                  <td style={styles.td}>{r.fileName || "—"}</td>
-                </tr>
-              ))}
 
-              {/* ✅ Totals row */}
+            <tbody>
+              {selectedGroup.rows.map((r) => {
+                const isEditing = editingRowKey === r.__rowKey;
+
+                return (
+                  <tr key={r.__rowKey}>
+                    <td style={styles.td}>
+                      {isEditing ? (
+                        <input
+                          style={styles.inputWide}
+                          value={draft.description}
+                          onChange={(e) =>
+                            setDraft({ ...draft, description: e.target.value })
+                          }
+                        />
+                      ) : (
+                        r.description || "—"
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {isEditing ? (
+                        <input
+                          style={styles.input}
+                          value={draft.qty}
+                          onChange={(e) =>
+                            setDraft({ ...draft, qty: e.target.value })
+                          }
+                        />
+                      ) : (
+                        (r.qty ?? "—")
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {isEditing ? (
+                        <input
+                          style={styles.input}
+                          value={draft.noOfBoxes}
+                          onChange={(e) =>
+                            setDraft({ ...draft, noOfBoxes: e.target.value })
+                          }
+                        />
+                      ) : (
+                        (r.noOfBoxes ?? "—")
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {isEditing ? (
+                        <input
+                          style={styles.input}
+                          value={draft.netWeight}
+                          onChange={(e) =>
+                            setDraft({ ...draft, netWeight: e.target.value })
+                          }
+                        />
+                      ) : (
+                        (r.netWeight ?? "—")
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {isEditing ? (
+                        <input
+                          style={styles.input}
+                          value={draft.grossWeight}
+                          onChange={(e) =>
+                            setDraft({ ...draft, grossWeight: e.target.value })
+                          }
+                        />
+                      ) : (
+                        (r.grossWeight ?? "—")
+                      )}
+                    </td>
+
+                    <td style={styles.td}>{r.fileName || "—"}</td>
+
+                    <td style={styles.td}>
+                      {isEditing ? (
+                        <select
+                          style={styles.input}
+                          value={draft.dgStatus}
+                          onChange={(e) =>
+                            setDraft({ ...draft, dgStatus: e.target.value })
+                          }
+                        >
+                          <option value="">--</option>
+                          <option value="DG">DG</option>
+                          <option value="Non-DG">Non-DG</option>
+                        </select>
+                      ) : (
+                        r.dgStatus || "—"
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {isEditing ? (
+                        <input
+                          style={styles.input}
+                          value={draft.unNumber}
+                          onChange={(e) => {
+                            const nextUn = e.target.value;
+                            setDraft({
+                              ...draft,
+                              unNumber: nextUn,
+                              dgStatus: nextUn.trim() ? "DG" : "Non-DG",
+                            });
+                          }}
+                        />
+                      ) : (
+                        r.unNumber || "—"
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {isEditing ? (
+                        <input
+                          style={styles.input}
+                          value={draft.classNumber}
+                          onChange={(e) =>
+                            setDraft({ ...draft, classNumber: e.target.value })
+                          }
+                        />
+                      ) : (
+                        r.classNumber || "—"
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {isEditing ? (
+                        <input
+                          style={styles.input}
+                          value={draft.packingGroup}
+                          onChange={(e) =>
+                            setDraft({ ...draft, packingGroup: e.target.value })
+                          }
+                        />
+                      ) : (
+                        r.packingGroup || "—"
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {isEditing ? (
+                        <input
+                          style={styles.input}
+                          value={draft.flashPoint}
+                          onChange={(e) =>
+                            setDraft({ ...draft, flashPoint: e.target.value })
+                          }
+                        />
+                      ) : (
+                        r.flashPoint || "—"
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {isEditing ? (
+                        <input
+                          style={styles.inputWide}
+                          value={draft.properShippingName}
+                          onChange={(e) =>
+                            setDraft({
+                              ...draft,
+                              properShippingName: e.target.value,
+                            })
+                          }
+                        />
+                      ) : (
+                        r.properShippingName || "—"
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {isEditing ? (
+                        <input
+                          style={styles.inputWide}
+                          value={draft.technicalName}
+                          onChange={(e) =>
+                            setDraft({
+                              ...draft,
+                              technicalName: e.target.value,
+                            })
+                          }
+                        />
+                      ) : (
+                        r.technicalName || "—"
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {isEditing ? (
+                        <input
+                          style={styles.input}
+                          value={draft.ems}
+                          onChange={(e) =>
+                            setDraft({ ...draft, ems: e.target.value })
+                          }
+                        />
+                      ) : (
+                        r.ems || "—"
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {isEditing ? (
+                        <select
+                          style={styles.input}
+                          value={draft.marinePollutant}
+                          onChange={(e) =>
+                            setDraft({
+                              ...draft,
+                              marinePollutant: e.target.value,
+                            })
+                          }
+                        >
+                          <option value="">--</option>
+                          <option value="Yes">Yes</option>
+                          <option value="No">No</option>
+                        </select>
+                      ) : (
+                        r.marinePollutant || "—"
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {isEditing ? (
+                        <input
+                          style={styles.input}
+                          value={draft.innerType}
+                          onChange={(e) =>
+                            setDraft({ ...draft, innerType: e.target.value })
+                          }
+                        />
+                      ) : (
+                        r.innerType || "—"
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {isEditing ? (
+                        <input
+                          style={styles.input}
+                          value={draft.outerType}
+                          onChange={(e) =>
+                            setDraft({ ...draft, outerType: e.target.value })
+                          }
+                        />
+                      ) : (
+                        r.outerType || "—"
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {!isEditing ? (
+                        <button
+                          style={styles.ghostBtn}
+                          onClick={() => startEdit(r)}
+                        >
+                          Edit
+                        </button>
+                      ) : (
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button style={styles.primaryBtn} onClick={saveEdit}>
+                            Save
+                          </button>
+                          <button style={styles.ghostBtn} onClick={cancelEdit}>
+                            Back
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+
               <tr>
                 <td style={{ ...styles.td, fontWeight: 900 }}>TOTAL</td>
                 <td style={styles.td} />
@@ -231,7 +625,7 @@ export default function PerSoProItemsTab({ store, actions }) {
                 <td style={{ ...styles.td, fontWeight: 900 }}>
                   {fmtWeight(selectedGroup.totalGrossWeight)}
                 </td>
-                <td style={styles.td} />
+                <td style={styles.td} colSpan={13} />
               </tr>
             </tbody>
           </table>
@@ -261,9 +655,7 @@ const styles = {
     background: "#101010",
   },
   blocks: { display: "flex", flexDirection: "column", gap: 10 },
-
   blockRow: { display: "flex", gap: 10, alignItems: "stretch" },
-
   blockBtn: {
     flex: 1,
     textAlign: "left",
@@ -274,7 +666,6 @@ const styles = {
     padding: "14px 16px",
     cursor: "pointer",
   },
-
   deleteBtn: {
     width: 110,
     border: "1px solid #5a1a1a",
@@ -284,13 +675,10 @@ const styles = {
     cursor: "pointer",
     fontWeight: 800,
   },
-
   blockLine: { fontSize: 14 },
   blockMeta: { marginTop: 8, fontSize: 12, color: "#bdbdbd" },
   blockLabel: { color: "#9a9a9a" },
-
   pairTitle: { marginTop: 6, color: "#bdbdbd", fontSize: 12 },
-
   ghostBtn: {
     border: "1px solid #2b2b2b",
     background: "#101010",
@@ -300,14 +688,21 @@ const styles = {
     cursor: "pointer",
     fontWeight: 800,
   },
-
+  primaryBtn: {
+    border: "1px solid #fff",
+    background: "#fff",
+    color: "#000",
+    borderRadius: 10,
+    padding: "10px 12px",
+    cursor: "pointer",
+    fontWeight: 800,
+  },
   card: {
     border: "1px solid #2b2b2b",
     background: "#0f0f0f",
     borderRadius: 12,
     padding: 12,
   },
-
   table: { width: "100%", borderCollapse: "collapse", fontSize: 12 },
   th: {
     textAlign: "left",
@@ -321,8 +716,24 @@ const styles = {
     borderBottom: "1px solid #1f1f1f",
     padding: "10px 8px",
     whiteSpace: "nowrap",
+    verticalAlign: "top",
   },
-
+  input: {
+    width: 90,
+    padding: "8px 10px",
+    borderRadius: 10,
+    border: "1px solid #2b2b2b",
+    background: "#0c0c0c",
+    color: "#fff",
+  },
+  inputWide: {
+    width: 220,
+    padding: "8px 10px",
+    borderRadius: 10,
+    border: "1px solid #2b2b2b",
+    background: "#0c0c0c",
+    color: "#fff",
+  },
   empty: {
     border: "1px dashed #2b2b2b",
     borderRadius: 12,

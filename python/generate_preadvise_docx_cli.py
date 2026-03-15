@@ -3,12 +3,37 @@ import sys
 from datetime import datetime
 from docx import Document
 
+def parse_number(v):
+    if v is None:
+        return 0.0
+    s = str(v).replace(",", "").strip()
+    out = ""
+    dot = False
+    started = False
+
+    for ch in s:
+        if ch.isdigit():
+            out += ch
+            started = True
+        elif ch == "." and not dot:
+            out += "."
+            dot = True
+            started = True
+        elif started:
+            break
+
+    try:
+        return float(out) if out else 0.0
+    except:
+        return 0.0
+
+def f2(x):
+    try:
+        return f"{float(x or 0):,.2f}"
+    except:
+        return "0.00"
+
 def _replace_in_paragraph_runs(paragraph, mapping: dict):
-    """
-    Replaces placeholders even if Word split them across multiple runs.
-    Tradeoff: may flatten formatting within the paragraph where replacement happens.
-    (Usually OK for template placeholders.)
-    """
     if not paragraph.runs:
         return
 
@@ -19,17 +44,14 @@ def _replace_in_paragraph_runs(paragraph, mapping: dict):
             new = new.replace(k, v)
 
     if new != full:
-        # Put all text into the first run, clear the rest
         paragraph.runs[0].text = new
         for r in paragraph.runs[1:]:
             r.text = ""
 
 def replace_text_in_doc(doc: Document, mapping: dict):
-    # Replace in normal paragraphs
     for p in doc.paragraphs:
         _replace_in_paragraph_runs(p, mapping)
 
-    # Replace in tables
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
@@ -50,16 +72,8 @@ def main():
 
     today = datetime.now().strftime("%B %d, %Y").upper()
 
-    def f2(x):
-        try:
-            return f"{float(x or 0):,.2f}"
-        except Exception:
-            return "0.00"
-
-    cargo_weight = float(payload.get("cargoWeightKgs", 0) or 0)
-    tare_weight = float(payload.get("tareWeightKgs", 0) or 0)
-
-    # ✅ NEW: compute VGMD automatically
+    cargo_weight = parse_number(payload.get("cargoWeightKgs"))
+    tare_weight = parse_number(payload.get("tareWeightKgs"))
     vgmd_weight = cargo_weight + tare_weight
 
     mapping = {
@@ -71,17 +85,14 @@ def main():
         "{{CONTAINER_SIZE_TYPE}}": str(payload.get("containerSizeType", "")),
         "{{CONTAINER_NUMBERS}}": str(payload.get("containerNumbers", "")),
         "{{SEAL_NUMBERS}}": str(payload.get("sealNumbers", "")),
-
         "{{TARE_WEIGHT_KGS}}": f2(tare_weight),
         "{{CARGO_WEIGHT_KGS}}": f2(cargo_weight),
-
-        # ✅ NEW PLACEHOLDER
         "{{VGMD_KGS}}": f2(vgmd_weight),
-
         "{{TRUCKER}}": str(payload.get("trucker", "")),
         "{{PLATE_NUMBER}}": str(payload.get("plateNumber", "")),
         "{{UNNO_IMO_CLASS}}": str(payload.get("unnoImoClass", "")),
     }
+
     doc = Document(template_path)
     replace_text_in_doc(doc, mapping)
     doc.save(out_path)

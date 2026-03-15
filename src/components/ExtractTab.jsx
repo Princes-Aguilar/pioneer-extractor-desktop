@@ -1,210 +1,264 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 
 export default function ExtractTab({ store, actions }) {
-  const [isWorking, setIsWorking] = useState(false);
-  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [dest, setDest] = useState("");
+  const [pro, setPro] = useState("");
+  const [soi, setSoi] = useState("");
 
-  // ✅ Required inputs
-  const [destination, setDestination] = useState("");
-  const [proNumber, setProNumber] = useState("");
-  const [soiNumber, setSoiNumber] = useState("");
-
-  useEffect(() => {
-    // When preview is cleared after save → reset inputs
-    if (!store.extractedPreview) {
-      setDestination("");
-      setProNumber("");
-      setSoiNumber("");
-    }
-  }, [store.extractedPreview]);
-
-  const pickWithDialog = async () => {
+  const choosePdf = async () => {
     try {
-      setError("");
+      setMsg("");
       const filePath = await window.pioneer.openPdfDialog();
       if (!filePath) return;
 
       actions.setSelectedFile({
         name: filePath.split(/[/\\]/).pop(),
         path: filePath,
+        kind: "pdf",
       });
     } catch (e) {
-      setError(e?.message || String(e));
+      setMsg(e?.message || String(e));
     }
   };
 
+  // const chooseXlsx = async () => {
+  //   try {
+  //     setMsg("");
+  //     const filePath = await window.pioneer.openXlsxDialog();
+  //     if (!filePath) return;
+
+  //     actions.setSelectedFile({
+  //       name: filePath.split(/[/\\]/).pop(),
+  //       path: filePath,
+  //       kind: "xlsx",
+  //     });
+  //   } catch (e) {
+  //     setMsg(e?.message || String(e));
+  //   }
+  // };
+
   const submitAndExtract = async () => {
     try {
-      setError("");
-      setIsWorking(true);
+      setMsg("");
 
-      // ✅ NEW: validate required fields first
-      const dest = destination.trim();
-      const pro = proNumber.trim();
-      const soi = soiNumber.trim();
-
-      if (!dest) throw new Error("Destination is required.");
-      if (!pro || !soi)
-        throw new Error("PRO Number and SOI Number are required.");
-
-      const f = store.selectedFile;
-      if (!f?.path)
-        throw new Error("No PDF selected. Click 'Choose PDF' first.");
-
-      if (!window.pioneer?.extractPdf) {
-        throw new Error(
-          "window.pioneer.extractPdf is missing. Check preload.cjs.",
-        );
+      if (!store?.selectedFile?.path) {
+        setMsg("Please choose a PDF or XLSX file first.");
+        return;
       }
 
-      const res = await window.pioneer.extractPdf(f.path);
-      if (!res?.ok) throw new Error(res?.error || "Extraction failed.");
+      if (
+        !String(dest || "").trim() ||
+        !String(pro || "").trim() ||
+        !String(soi || "").trim()
+      ) {
+        setMsg(
+          "Destination, PRO Number, and SOI Number are required before extracting.",
+        );
+        return;
+      }
 
-      // ✅ save into preview so it can be passed later on Proceed(Save)
+      setBusy(true);
+
+      let res;
+      if (store.selectedFile.kind === "xlsx") {
+        res = await window.pioneer.extractXlsx(store.selectedFile.path);
+      } else {
+        res = await window.pioneer.extractPdf(store.selectedFile.path);
+      }
+
+      if (!res?.ok) {
+        setMsg(res?.error || "Extraction failed.");
+        return;
+      }
+
       actions.setExtractedPreview({
         fileName: res.fileName,
         numberOfItemsExtracted: res.numberOfItemsExtracted,
         items: res.items || [],
         debug: res.debug,
-
-        destination: dest, // ✅ NEW
-        proNumber: pro,
-        soiNumber: soi,
+        destination: String(dest).trim(),
+        proNumber: String(pro).trim(),
+        soiNumber: String(soi).trim(),
+        totals: res.totals || null,
       });
     } catch (e) {
-      setError(e?.message || String(e));
+      setMsg(e?.message || String(e));
     } finally {
-      setIsWorking(false);
+      setBusy(false);
     }
   };
 
-  const destOk = destination.trim().length > 0;
-  const proOk = proNumber.trim().length > 0;
-  const soiOk = soiNumber.trim().length > 0;
-  const fileOk = !!store.selectedFile?.path;
-
-  const canSubmit = destOk && proOk && soiOk && fileOk && !isWorking;
-
   return (
     <div style={styles.wrap}>
-      <div style={styles.head}>
-        <div>
-          <h2 style={styles.h2}>Extract</h2>
-          <p style={styles.p}>
-            Choose a packing list PDF, extract item rows, review, then proceed.
-          </p>
-        </div>
-
-        {/* ✅ NEW: Destination + PRO + SOI left of Choose PDF */}
-        <div style={styles.headRight}>
-          <input
-            style={styles.input}
-            type="text"
-            placeholder="Destination (required)"
-            value={destination}
-            onChange={(e) => setDestination(e.target.value)}
-          />
-
-          <input
-            style={styles.input}
-            type="text"
-            placeholder="PRO Number (required)"
-            value={proNumber}
-            onChange={(e) => setProNumber(e.target.value)}
-          />
-
-          <input
-            style={styles.input}
-            type="text"
-            placeholder="SOI Number (required)"
-            value={soiNumber}
-            onChange={(e) => setSoiNumber(e.target.value)}
-          />
-
-          <button style={styles.ghostBtn} onClick={pickWithDialog}>
-            Choose PDF
-          </button>
+      <div>
+        <h2 style={styles.h2}>Extract Packing List</h2>
+        <div style={styles.sub}>
+          Choose a packing list PDF or XLSX, extract rows, review them, then
+          save.
         </div>
       </div>
 
-      <div style={styles.card}>
-        <div style={styles.row}>
-          <div style={styles.label}>Selected file</div>
-          <div style={styles.value}>
-            {store.selectedFile?.name ? (
-              <b>{store.selectedFile.name}</b>
-            ) : (
-              <span style={{ color: "#bdbdbd" }}>None</span>
-            )}
-          </div>
-        </div>
-
+      <div style={styles.row}>
+        <button style={styles.btn} onClick={choosePdf} type="button">
+          Choose PDF
+        </button>
+        {/* <button style={styles.btn} onClick={chooseXlsx} type="button">
+          Choose XLSX
+        </button> */}
         <button
           style={{
+            ...styles.btn,
             ...styles.primaryBtn,
-            opacity: canSubmit ? 1 : 0.45,
-            cursor: canSubmit ? "pointer" : "not-allowed",
+            ...(busy ? styles.btnBusy : {}),
           }}
-          disabled={!canSubmit}
           onClick={submitAndExtract}
-          title={
-            !destOk
-              ? "Destination is required"
-              : !proOk || !soiOk
-                ? "PRO Number and SOI Number are required"
-                : !fileOk
-                  ? "Please choose a PDF"
-                  : isWorking
-                    ? "Working..."
-                    : "Submit"
-          }
+          disabled={busy}
+          type="button"
         >
-          {isWorking ? "Extracting..." : "Submit (Extract)"}
+          {busy ? "Extracting..." : "Extract"}
         </button>
-
-        {error ? <div style={styles.errorBox}>{error}</div> : null}
-
-        {!destOk || !proOk || !soiOk ? (
-          <div style={styles.hint}>
-            * Please enter <b>Destination</b>, <b>PRO Number</b>, and{" "}
-            <b>SOI Number</b> before submitting.
-          </div>
-        ) : null}
       </div>
 
-      {store.extractedPreview ? (
+      <div style={styles.metaCard}>
+        <div>
+          <b>Selected file:</b>{" "}
+          {store?.selectedFile?.path || "No file selected"}
+        </div>
+      </div>
+
+      <div style={styles.formGrid}>
+        <label style={styles.field}>
+          <div style={styles.label}>Destination</div>
+          <input
+            style={{
+              ...styles.input,
+              ...(msg && !String(dest || "").trim() ? styles.inputError : {}),
+            }}
+            value={dest}
+            onChange={(e) => {
+              setDest(e.target.value);
+              if (msg) setMsg("");
+            }}
+            placeholder="Enter destination"
+          />
+        </label>
+
+        <label style={styles.field}>
+          <div style={styles.label}>PRO Number</div>
+          <input
+            style={{
+              ...styles.input,
+              ...(msg && !String(pro || "").trim() ? styles.inputError : {}),
+            }}
+            value={pro}
+            onChange={(e) => {
+              setPro(e.target.value);
+              if (msg) setMsg("");
+            }}
+            placeholder="Enter PRO number"
+          />
+        </label>
+
+        <label style={styles.field}>
+          <div style={styles.label}>SOI Number</div>
+          <input
+            style={{
+              ...styles.input,
+              ...(msg && !String(soi || "").trim() ? styles.inputError : {}),
+            }}
+            value={soi}
+            onChange={(e) => {
+              setSoi(e.target.value);
+              if (msg) setMsg("");
+            }}
+            placeholder="Enter SOI number"
+          />
+        </label>
+      </div>
+
+      {msg ? <div style={styles.error}>{msg}</div> : null}
+
+      <div style={styles.hint}>
+        Expected format for your latest PDF:{" "}
+        <b>Description | Qty | Unit | Net Weight | Gross Weight | Boxes</b>
+      </div>
+
+      {store?.extractedPreview?.totals ? (
+        <div style={styles.totalsCard}>
+          <div style={styles.totalsTitle}>Extracted Totals</div>
+
+          <div style={styles.totalsGrid}>
+            <div style={styles.totalBox}>
+              <div style={styles.totalLabel}>Total Qty</div>
+              <div style={styles.totalValue}>
+                {store.extractedPreview.totals.qty ?? 0}
+              </div>
+            </div>
+
+            <div style={styles.totalBox}>
+              <div style={styles.totalLabel}>Total Boxes</div>
+              <div style={styles.totalValue}>
+                {store.extractedPreview.totals.boxes ?? 0}
+              </div>
+            </div>
+
+            <div style={styles.totalBox}>
+              <div style={styles.totalLabel}>Total Net Weight</div>
+              <div style={styles.totalValue}>
+                {store.extractedPreview.totals.netWeight ?? 0}
+              </div>
+            </div>
+
+            <div style={styles.totalBox}>
+              <div style={styles.totalLabel}>Total Gross Weight</div>
+              <div style={styles.totalValue}>
+                {store.extractedPreview.totals.grossWeight ?? 0}
+              </div>
+            </div>
+          </div>
+
+          {store.extractedPreview.totals.fromFile ? (
+            <div style={styles.fileTotalsNote}>
+              <b>Totals detected from PDF file:</b> Qty:{" "}
+              {store.extractedPreview.totals.fromFile.totalQty ?? "—"} | Net:{" "}
+              {store.extractedPreview.totals.fromFile.totalNetWeight ?? "—"} |
+              Gross:{" "}
+              {store.extractedPreview.totals.fromFile.totalGrossWeight ?? "—"} |
+              Boxes: {store.extractedPreview.totals.fromFile.totalBoxes ?? "—"}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {store?.extractedPreview ? (
         <div style={styles.reviewCard}>
           <div style={styles.reviewTop}>
             <div>
-              <div style={styles.reviewTitle}>Review Extracted Data</div>
+              <div style={styles.reviewTitle}>Extracted Preview</div>
               <div style={styles.reviewSub}>
-                File: <b>{store.extractedPreview.fileName}</b>{" "}
-                <span style={{ color: "#bdbdbd" }}>
-                  (items: {store.extractedPreview.numberOfItemsExtracted ?? 0})
-                </span>
+                File: <b>{store.extractedPreview.fileName}</b>
               </div>
-
-              {/* ✅ NEW: show Destination + PRO/SOI */}
               <div style={styles.reviewMeta}>
+                Items extracted:{" "}
+                <b>{store.extractedPreview.numberOfItemsExtracted ?? 0}</b>
+                {" | "}
                 Destination: <b>{store.extractedPreview.destination || "—"}</b>
-                &nbsp;|&nbsp; PRO:{" "}
-                <b>{store.extractedPreview.proNumber || "—"}</b>
-                &nbsp;|&nbsp; SOI:{" "}
-                <b>{store.extractedPreview.soiNumber || "—"}</b>
+                {" | "}
+                PRO: <b>{store.extractedPreview.proNumber || "—"}</b>
+                {" | "}
+                SOI: <b>{store.extractedPreview.soiNumber || "—"}</b>
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 10 }}>
-              <button style={styles.ghostBtn} onClick={actions.clearPreview}>
-                Clear
-              </button>
-              <button
-                style={styles.primaryBtn}
-                onClick={actions.proceedSaveExtracted}
-              >
-                Proceed (Save)
-              </button>
-            </div>
+            <button
+              style={styles.primaryBtn}
+              onClick={actions.proceedSaveExtracted}
+              type="button"
+            >
+              Proceed (Save)
+            </button>
           </div>
 
           <div style={{ overflowX: "auto" }}>
@@ -213,6 +267,7 @@ export default function ExtractTab({ store, actions }) {
                 <tr>
                   <th style={styles.th}>Description</th>
                   <th style={styles.th}>Qty</th>
+                  <th style={styles.th}>Unit</th>
                   <th style={styles.th}>Boxes</th>
                   <th style={styles.th}>Net Weight</th>
                   <th style={styles.th}>Gross Weight</th>
@@ -220,34 +275,34 @@ export default function ExtractTab({ store, actions }) {
                 </tr>
               </thead>
               <tbody>
-                {store.extractedPreview.items?.length ? (
-                  store.extractedPreview.items.map((r, idx) => (
+                {(store.extractedPreview.items || []).length === 0 ? (
+                  <tr>
+                    <td style={styles.tdMuted} colSpan={7}>
+                      No extracted rows found.
+                    </td>
+                  </tr>
+                ) : (
+                  (store.extractedPreview.items || []).map((it, idx) => (
                     <tr key={idx}>
-                      <td style={styles.td}>{r.description}</td>
-                      <td style={styles.td}>{r.qty ?? "—"}</td>
-                      <td style={styles.td}>{r.noOfBoxes ?? "—"}</td>
-                      <td style={styles.td}>{r.netWeight ?? "—"}</td>
-                      <td style={styles.td}>{r.grossWeight ?? "—"}</td>
+                      <td style={styles.td}>{it.description || "—"}</td>
+                      <td style={styles.td}>{it.qty ?? "—"}</td>
+                      <td style={styles.td}>{it.unit ?? "—"}</td>
+                      <td style={styles.td}>{it.noOfBoxes ?? "—"}</td>
+                      <td style={styles.td}>{it.netWeight ?? "—"}</td>
+                      <td style={styles.td}>{it.grossWeight ?? "—"}</td>
                       <td style={styles.td}>
-                        {r.fileName ?? store.extractedPreview.fileName}
+                        {it.fileName || store.extractedPreview.fileName || "—"}
                       </td>
                     </tr>
                   ))
-                ) : (
-                  <tr>
-                    <td style={styles.tdMuted} colSpan={6}>
-                      No rows extracted.
-                    </td>
-                  </tr>
                 )}
               </tbody>
             </table>
           </div>
 
-          {store.extractedPreview.debug?.textLength ? (
+          {store.extractedPreview.debug ? (
             <div style={styles.debug}>
-              Debug: extracted text length ={" "}
-              {store.extractedPreview.debug.textLength}
+              <b>Debug:</b> {JSON.stringify(store.extractedPreview.debug)}
             </div>
           ) : null}
         </div>
@@ -257,106 +312,186 @@ export default function ExtractTab({ store, actions }) {
 }
 
 const styles = {
-  wrap: { display: "flex", flexDirection: "column", gap: 14 },
-  head: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    flexWrap: "wrap",
-  },
-  headRight: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-  },
-  h2: { margin: 0, fontSize: 22 },
-  p: { margin: "6px 0 0 0", color: "#bdbdbd" },
-
-  input: {
-    padding: "9px 12px",
-    border: "1px solid #2b2b2b",
-    background: "#0b0b0b",
-    color: "#fff",
-    borderRadius: 10,
-    outline: "none",
-    minWidth: 200,
-  },
-
-  card: {
-    padding: 16,
-    border: "1px solid #2b2b2b",
-    borderRadius: 12,
-    background: "#101010",
+  wrap: {
     display: "flex",
     flexDirection: "column",
-    gap: 12,
-  },
-  row: { display: "flex", justifyContent: "space-between", gap: 12 },
-  label: { color: "#bdbdbd" },
-  value: { color: "#fff" },
-
-  ghostBtn: {
-    padding: "9px 12px",
-    border: "1px solid #2b2b2b",
-    background: "transparent",
+    gap: 14,
     color: "#fff",
-    borderRadius: 10,
+  },
+  h2: {
+    margin: 0,
+    fontSize: 26,
+    fontWeight: 900,
+  },
+  sub: {
+    marginTop: 6,
+    color: "#bdbdbd",
+    fontSize: 13,
+  },
+  row: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  btn: {
+    padding: "11px 16px",
+    borderRadius: 12,
+    border: "1px solid #2b2b2b",
+    background: "#111",
+    color: "#fff",
+    fontWeight: 800,
     cursor: "pointer",
   },
   primaryBtn: {
-    padding: "10px 14px",
+    padding: "11px 16px",
+    borderRadius: 12,
     border: "1px solid #fff",
     background: "#fff",
     color: "#000",
-    borderRadius: 10,
-    fontWeight: 800,
+    fontWeight: 900,
+    cursor: "pointer",
   },
-  errorBox: {
-    marginTop: 6,
-    padding: 10,
-    background: "#2a1010",
-    border: "1px solid #5a1a1a",
+  btnBusy: {
+    opacity: 0.7,
+    cursor: "not-allowed",
+  },
+  metaCard: {
+    border: "1px solid #2b2b2b",
+    background: "rgba(0,0,0,0.25)",
+    borderRadius: 12,
+    padding: 12,
+  },
+  formGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(180px, 1fr))",
+    gap: 12,
+  },
+  field: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+  label: {
+    fontSize: 12,
+    color: "#bdbdbd",
+  },
+  input: {
+    background: "#0c0c0c",
+    border: "1px solid #2b2b2b",
     borderRadius: 10,
-    color: "#ffb3b3",
+    padding: "10px 12px",
+    color: "#fff",
+    outline: "none",
+  },
+  inputError: {
+    border: "1px solid #b94a48",
+    boxShadow: "0 0 0 1px rgba(185,74,72,0.2)",
+  },
+  error: {
+    border: "1px solid #5b2b2b",
+    background: "#2a1111",
+    color: "#ffd0d0",
+    borderRadius: 12,
+    padding: 12,
     whiteSpace: "pre-wrap",
   },
-  hint: { color: "#bdbdbd", fontSize: 12, marginTop: 4 },
-
-  reviewCard: {
-    padding: 16,
+  hint: {
+    color: "#bdbdbd",
+    fontSize: 12,
+  },
+  totalsCard: {
+    marginTop: 4,
     border: "1px solid #2b2b2b",
+    borderRadius: 14,
+    padding: 14,
+    background: "#101010",
+  },
+  totalsTitle: {
+    fontSize: 14,
+    fontWeight: 900,
+    marginBottom: 12,
+  },
+  totalsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, minmax(140px, 1fr))",
+    gap: 12,
+  },
+  totalBox: {
+    border: "1px solid #242424",
     borderRadius: 12,
-    background: "#0f0f0f",
+    padding: 12,
+    background: "#0b0b0b",
+  },
+  totalLabel: {
+    fontSize: 12,
+    color: "#bdbdbd",
+    marginBottom: 6,
+  },
+  totalValue: {
+    fontSize: 18,
+    fontWeight: 900,
+    color: "#fff",
+  },
+  fileTotalsNote: {
+    marginTop: 12,
+    fontSize: 12,
+    color: "#cfcfcf",
+  },
+  reviewCard: {
+    border: "1px solid #2b2b2b",
+    borderRadius: 14,
+    padding: 14,
+    background: "#101010",
   },
   reviewTop: {
     display: "flex",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "flex-start",
     gap: 12,
     marginBottom: 12,
     flexWrap: "wrap",
   },
-  reviewTitle: { fontSize: 16, fontWeight: 900 },
-  reviewSub: { marginTop: 6, color: "#eaeaea" },
-  reviewMeta: { marginTop: 6, color: "#bdbdbd", fontSize: 12 },
-
-  table: { width: "100%", borderCollapse: "collapse" },
-  th: {
-    textAlign: "left",
-    padding: "10px 8px",
-    borderBottom: "1px solid #2b2b2b",
+  reviewTitle: {
+    fontSize: 16,
+    fontWeight: 900,
+  },
+  reviewSub: {
+    marginTop: 4,
+    color: "#d8d8d8",
+    fontSize: 13,
+  },
+  reviewMeta: {
+    marginTop: 6,
     color: "#bdbdbd",
-    fontWeight: 800,
     fontSize: 12,
   },
-  td: {
+  table: {
+    width: "100%",
+    borderCollapse: "collapse",
+    fontSize: 12,
+  },
+  th: {
+    textAlign: "left",
+    borderBottom: "1px solid #2b2b2b",
     padding: "10px 8px",
+    color: "#bdbdbd",
+    fontWeight: 900,
+    whiteSpace: "nowrap",
+  },
+  td: {
     borderBottom: "1px solid #1f1f1f",
+    padding: "10px 8px",
+    whiteSpace: "nowrap",
     verticalAlign: "top",
   },
-  tdMuted: { padding: "12px 8px", color: "#bdbdbd" },
-  debug: { marginTop: 10, color: "#bdbdbd", fontSize: 12 },
+  tdMuted: {
+    padding: "12px 8px",
+    color: "#bdbdbd",
+  },
+  debug: {
+    marginTop: 12,
+    fontSize: 12,
+    color: "#cfcfcf",
+    whiteSpace: "pre-wrap",
+  },
 };

@@ -197,6 +197,68 @@ export default function App() {
         });
       },
 
+      addPerSoProRowTop: ({ proNumber, soiNumber, destination }) => {
+        let created = null;
+
+        setSavedItems((prev) =>
+          prev.map((rec) => {
+            const recPro = (rec.proNumber || "").toString().trim() || "—";
+            const recSoi = (rec.soiNumber || "").toString().trim() || "—";
+            const recDest = (rec.destination || "").toString().trim() || "—";
+
+            const pro = (proNumber || "").toString().trim() || "—";
+            const soi = (soiNumber || "").toString().trim() || "—";
+            const dest = (destination || "").toString().trim() || "—";
+
+            if (
+              created ||
+              !(recPro === pro && recSoi === soi && recDest === dest)
+            ) {
+              return rec;
+            }
+
+            const newRow = {
+              description: "",
+              qty: "",
+              noOfBoxes: "",
+              netWeight: "",
+              grossWeight: "",
+              fileName: rec.fileName || "",
+
+              proNumber: pro,
+              soiNumber: soi,
+              destination: dest,
+
+              hsCode: "",
+              dgStatus: "Non-DG",
+              unNumber: "",
+              classNumber: "",
+              packingGroup: "",
+              flashPoint: "",
+              properShippingName: "",
+              technicalName: "",
+              ems: "",
+              marinePollutant: "",
+              innerType: "",
+              outerType: "",
+            };
+
+            created = {
+              recordId: rec.id,
+              itemIndex: 0,
+            };
+
+            return {
+              ...rec,
+              extractedItems: [newRow, ...(rec.extractedItems || [])],
+              numberOfItemsExtracted: (rec.numberOfItemsExtracted || 0) + 1,
+            };
+          }),
+        );
+
+        return created;
+      },
+
       // DG Dec generation
       generateDGDec: async ({
         proNumber,
@@ -279,6 +341,7 @@ export default function App() {
           proNumber: result.proNumber || "",
           soiNumber: result.soiNumber || "",
           destination: result.destination || "",
+          totals: result.totals || null,
         });
       },
 
