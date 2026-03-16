@@ -14,4 +14,20 @@ contextBridge.exposeInMainWorld("pioneer", {
   generateLOI: (payload) => ipcRenderer.invoke("generate-loi", payload),
   generateNonDGCert: (payload) =>
     ipcRenderer.invoke("generate-nondg-cert", payload),
+
+  // SUPABASE
+  supabaseLoadAll: () => ipcRenderer.invoke("supabase:load-all"),
+  supabaseSaveShipmentRecord: (record) =>
+    ipcRenderer.invoke("supabase:save-shipment-record", record),
+  supabaseDeleteShipmentGroup: (payload) =>
+    ipcRenderer.invoke("supabase:delete-shipment-group", payload),
+
+  supabaseSaveMsdsItems: (items) =>
+    ipcRenderer.invoke("supabase:save-msds-items", items),
+  supabaseInsertMsdsItem: (row) =>
+    ipcRenderer.invoke("supabase:insert-msds-item", row),
+  supabaseUpdateMsdsItem: ({ rowId, patch }) =>
+    ipcRenderer.invoke("supabase:update-msds-item", { rowId, patch }),
+  supabaseDeleteMsdsItem: ({ rowId }) =>
+    ipcRenderer.invoke("supabase:delete-msds-item", { rowId }),
 });

@@ -43,6 +43,88 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
+require("dotenv").config();
+const { createClient } = require("@supabase/supabase-js");
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY,
+);
+
+function toShipmentDb(record) {
+  return {
+    id: record.id,
+    file_name: record.fileName ?? "",
+    pro_number: record.proNumber ?? "",
+    soi_number: record.soiNumber ?? "",
+    destination: record.destination ?? "",
+    number_of_items_extracted: record.numberOfItemsExtracted ?? 0,
+    extracted_items: Array.isArray(record.extractedItems)
+      ? record.extractedItems
+      : [],
+  };
+}
+
+function fromShipmentDb(row) {
+  return {
+    id: row.id,
+    fileName: row.file_name ?? "",
+    addedAt: row.added_at ?? "",
+    proNumber: row.pro_number ?? "",
+    soiNumber: row.soi_number ?? "",
+    destination: row.destination ?? "",
+    numberOfItemsExtracted: row.number_of_items_extracted ?? 0,
+    extractedItems: Array.isArray(row.extracted_items)
+      ? row.extracted_items
+      : [],
+  };
+}
+
+function toMsdsDb(row) {
+  return {
+    id: row.id,
+    description: row.description ?? "",
+    description_clean: row.descriptionClean ?? "",
+    hs_code: row.hsCode ?? "",
+    dg_status: row.dgStatus ?? "",
+    un_number: row.unNumber ?? "",
+    class_number: row.classNumber ?? "",
+    packing_group: row.packingGroup ?? "",
+    flash_point: row.flashPoint ?? "",
+    proper_shipping_name: row.properShippingName ?? "",
+    technical_name: row.technicalName ?? "",
+    ems: row.ems ?? "",
+    marine_pollutant: row.marinePollutant ?? "",
+    inner_type: row.innerType ?? "",
+    outer_type: row.outerType ?? "",
+    file_name: row.fileName ?? "",
+    source: row.source ?? "msds",
+  };
+}
+
+function fromMsdsDb(row) {
+  return {
+    id: row.id,
+    description: row.description ?? "",
+    descriptionClean: row.description_clean ?? "",
+    hsCode: row.hs_code ?? "",
+    dgStatus: row.dg_status ?? "",
+    unNumber: row.un_number ?? "",
+    classNumber: row.class_number ?? "",
+    packingGroup: row.packing_group ?? "",
+    flashPoint: row.flash_point ?? "",
+    properShippingName: row.proper_shipping_name ?? "",
+    technicalName: row.technical_name ?? "",
+    ems: row.ems ?? "",
+    marinePollutant: row.marine_pollutant ?? "",
+    innerType: row.inner_type ?? "",
+    outerType: row.outer_type ?? "",
+    fileName: row.file_name ?? "",
+    source: row.source ?? "msds",
+    addedAt: row.added_at ?? "",
+  };
+}
+
 // ---------- IPC: Open PDF Dialog ----------
 ipcMain.handle("dialog:openPdf", async () => {
   const result = await dialog.showOpenDialog({
@@ -571,6 +653,102 @@ ipcMain.handle("generate-nondg-cert", async (_event, payload) => {
       if (fs.existsSync(tempJson)) fs.unlinkSync(tempJson);
     } catch (_) {}
   }
+});
+
+ipcMain.handle("supabase:load-all", async () => {
+  const [
+    { data: shipmentRows, error: shipmentErr },
+    { data: msdsRows, error: msdsErr },
+  ] = await Promise.all([
+    supabase
+      .from("shipment_records")
+      .select("*")
+      .order("added_at", { ascending: false }),
+    supabase
+      .from("msds_items")
+      .select("*")
+      .order("added_at", { ascending: false }),
+  ]);
+
+  if (shipmentErr) throw shipmentErr;
+  if (msdsErr) throw msdsErr;
+
+  return {
+    ok: true,
+    savedItems: (shipmentRows || []).map(fromShipmentDb),
+    savedMsdsItems: (msdsRows || []).map(fromMsdsDb),
+  };
+});
+
+ipcMain.handle("supabase:save-shipment-record", async (_e, record) => {
+  const payload = toShipmentDb(record);
+
+  const { error } = await supabase.from("shipment_records").upsert(payload);
+
+  if (error) throw error;
+  return { ok: true };
+});
+
+ipcMain.handle("supabase:delete-shipment-group", async (_e, payload) => {
+  const pro = String(payload?.proNumber || "").trim() || "—";
+  const soi = String(payload?.soiNumber || "").trim() || "—";
+  const dest = String(payload?.destination || "").trim() || "—";
+
+  const { error } = await supabase
+    .from("shipment_records")
+    .delete()
+    .eq("pro_number", pro)
+    .eq("soi_number", soi)
+    .eq("destination", dest);
+
+  if (error) throw error;
+  return { ok: true };
+});
+
+ipcMain.handle("supabase:save-msds-items", async (_e, items) => {
+  const payload = (Array.isArray(items) ? items : []).map(toMsdsDb);
+
+  if (!payload.length) return { ok: true };
+
+  const { error } = await supabase.from("msds_items").upsert(payload);
+
+  if (error) throw error;
+  return { ok: true };
+});
+
+ipcMain.handle("supabase:insert-msds-item", async (_e, row) => {
+  const payload = toMsdsDb(row);
+
+  const { data, error } = await supabase
+    .from("msds_items")
+    .insert(payload)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return { ok: true, row: fromMsdsDb(data) };
+});
+
+ipcMain.handle("supabase:update-msds-item", async (_e, { rowId, patch }) => {
+  const dbPatch = toMsdsDb({ id: rowId, ...patch });
+  delete dbPatch.id;
+  delete dbPatch.added_at;
+  delete dbPatch.source;
+
+  const { error } = await supabase
+    .from("msds_items")
+    .update(dbPatch)
+    .eq("id", rowId);
+
+  if (error) throw error;
+  return { ok: true };
+});
+
+ipcMain.handle("supabase:delete-msds-item", async (_e, { rowId }) => {
+  const { error } = await supabase.from("msds_items").delete().eq("id", rowId);
+
+  if (error) throw error;
+  return { ok: true };
 });
 
 function runPython(pythonCmd, scriptPath, args) {

@@ -75,15 +75,19 @@ export default function ExtractMsdsTab({ store, actions }) {
     }
   };
 
-  const saveAll = () => {
+  const saveAll = async () => {
     const clean = results.filter((x) => x.ok);
     if (!clean.length) {
       setMsg("No extracted MSDS data to save.");
       return;
     }
 
-    actions?.saveExtractedMsdsItems?.(clean);
-    setMsg(`Saved ${clean.length} MSDS record(s).`);
+    try {
+      await actions?.saveExtractedMsdsItems?.(clean);
+      setMsg(`Saved ${clean.length} MSDS record(s).`);
+    } catch (e) {
+      setMsg(e?.message || String(e));
+    }
   };
 
   const startEdit = (idx) => {

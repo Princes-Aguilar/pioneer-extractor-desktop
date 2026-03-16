@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import StartScreen from "./screens/StartScreen.jsx";
 import MenuScreen from "./screens/MenuScreen.jsx";
 
@@ -17,6 +17,29 @@ export default function App() {
 
   // ✅ Saved MSDS extracted records
   const [savedMsdsItems, setSavedMsdsItems] = useState(() => []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      try {
+        if (!window.pioneer?.supabaseLoadAll) return;
+        const res = await window.pioneer.supabaseLoadAll();
+        if (!mounted || !res?.ok) return;
+
+        setSavedItems(Array.isArray(res.savedItems) ? res.savedItems : []);
+        setSavedMsdsItems(
+          Array.isArray(res.savedMsdsItems) ? res.savedMsdsItems : [],
+        );
+      } catch (err) {
+        console.error("Failed loading Supabase data:", err);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const actions = useMemo(() => {
     return {
@@ -38,7 +61,7 @@ export default function App() {
       },
 
       // ✅ Save extracted MSDS rows
-      saveExtractedMsdsItems: (items) => {
+      saveExtractedMsdsItems: async (items) => {
         const clean = Array.isArray(items) ? items : [];
 
         const mapped = clean.map((it, idx) => {
@@ -69,46 +92,46 @@ export default function App() {
           };
         });
 
-        setSavedMsdsItems((prev) => {
-          const seen = new Set(
-            prev.map(
-              (x) =>
-                `${String(x.description || "")
-                  .trim()
-                  .toUpperCase()}||${String(x.fileName || "")
-                  .trim()
-                  .toUpperCase()}`,
-            ),
-          );
+        const existing = savedMsdsItems || [];
+        const seen = new Set(
+          existing.map(
+            (x) =>
+              `${String(x.description || "")
+                .trim()
+                .toUpperCase()}||${String(x.fileName || "")
+                .trim()
+                .toUpperCase()}`,
+          ),
+        );
 
-          const toAdd = mapped.filter((x) => {
-            const key = `${String(x.description || "")
-              .trim()
-              .toUpperCase()}||${String(x.fileName || "")
-              .trim()
-              .toUpperCase()}`;
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-
-          return [...prev, ...toAdd];
+        const toAdd = mapped.filter((x) => {
+          const key = `${String(x.description || "")
+            .trim()
+            .toUpperCase()}||${String(x.fileName || "")
+            .trim()
+            .toUpperCase()}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
         });
+
+        if (!toAdd.length) return;
+
+        await window.pioneer.supabaseSaveMsdsItems(toAdd);
+        setSavedMsdsItems((prev) => [...prev, ...toAdd]);
       },
 
       clearSavedMsdsItems: () => {
         setSavedMsdsItems([]);
       },
 
-      addSavedMsdsRowTop: () => {
-        const newId = crypto.randomUUID();
-
+      addSavedMsdsRowTop: async () => {
         const newRow = {
-          id: newId,
+          id: crypto.randomUUID(),
           description: "",
           descriptionClean: "",
           hsCode: "",
-          dgStatus: "Non-DG", // default until user enters UN number
+          dgStatus: "Non-DG",
           unNumber: "",
           classNumber: "",
           packingGroup: "",
@@ -124,22 +147,28 @@ export default function App() {
           addedAt: new Date().toISOString(),
         };
 
+        await window.pioneer.supabaseInsertMsdsItem(newRow);
         setSavedMsdsItems((prev) => [newRow, ...prev]);
-        return newId;
+        return newRow.id;
       },
 
-      updateSavedMsdsRow: ({ rowId, patch }) => {
+      updateSavedMsdsRow: async ({ rowId, patch }) => {
+        await window.pioneer.supabaseUpdateMsdsItem({ rowId, patch });
+
         setSavedMsdsItems((prev) =>
           prev.map((row) => (row.id === rowId ? { ...row, ...patch } : row)),
         );
       },
 
-      deleteSavedMsdsRow: ({ rowId }) => {
+      deleteSavedMsdsRow: async ({ rowId }) => {
+        await window.pioneer.supabaseDeleteMsdsItem({ rowId });
         setSavedMsdsItems((prev) => prev.filter((row) => row.id !== rowId));
       },
 
       // Update one saved extracted item row
-      updateSavedItemRow: ({ recordId, itemIndex, patch }) => {
+      updateSavedItemRow: async ({ recordId, itemIndex, patch }) => {
+        let updatedRecord = null;
+
         setSavedItems((prev) =>
           prev.map((rec) => {
             if (rec.id !== recordId) return rec;
@@ -149,9 +178,14 @@ export default function App() {
               return { ...it, ...patch };
             });
 
-            return { ...rec, extractedItems: nextItems };
+            updatedRecord = { ...rec, extractedItems: nextItems };
+            return updatedRecord;
           }),
         );
+
+        if (updatedRecord) {
+          await window.pioneer.supabaseSaveShipmentRecord(updatedRecord);
+        }
       },
 
       // Add row at top of first record
@@ -197,8 +231,9 @@ export default function App() {
         });
       },
 
-      addPerSoProRowTop: ({ proNumber, soiNumber, destination }) => {
+      addPerSoProRowTop: async ({ proNumber, soiNumber, destination }) => {
         let created = null;
+        let updatedRecord = null;
 
         setSavedItems((prev) =>
           prev.map((rec) => {
@@ -224,11 +259,9 @@ export default function App() {
               netWeight: "",
               grossWeight: "",
               fileName: rec.fileName || "",
-
               proNumber: pro,
               soiNumber: soi,
               destination: dest,
-
               hsCode: "",
               dgStatus: "Non-DG",
               unNumber: "",
@@ -248,13 +281,19 @@ export default function App() {
               itemIndex: 0,
             };
 
-            return {
+            updatedRecord = {
               ...rec,
               extractedItems: [newRow, ...(rec.extractedItems || [])],
               numberOfItemsExtracted: (rec.numberOfItemsExtracted || 0) + 1,
             };
+
+            return updatedRecord;
           }),
         );
+
+        if (updatedRecord) {
+          await window.pioneer.supabaseSaveShipmentRecord(updatedRecord);
+        }
 
         return created;
       },
@@ -383,7 +422,7 @@ export default function App() {
       },
 
       // Save extracted preview into savedItems
-      proceedSaveExtracted: () => {
+      proceedSaveExtracted: async () => {
         if (!extractedPreview) return;
 
         const defaultDGFields = {
@@ -428,6 +467,65 @@ export default function App() {
             extractedPreview.numberOfItemsExtracted ?? normalizedItems.length,
         };
 
+        await window.pioneer.supabaseSaveShipmentRecord(record);
+
+        const pioneerItems = normalizedItems
+          .map((it) => ({
+            id: crypto.randomUUID(),
+            description: String(it.description || "").trim(),
+            descriptionClean: String(it.description || "").trim(),
+            hsCode: it.hsCode || "",
+            dgStatus: it.dgStatus || "",
+            unNumber: it.unNumber || "",
+            classNumber: it.classNumber || "",
+            packingGroup: it.packingGroup || "",
+            flashPoint: it.flashPoint || "",
+            properShippingName: it.properShippingName || "",
+            technicalName: it.technicalName || "",
+            ems: it.ems || "",
+            marinePollutant: it.marinePollutant || "",
+            innerType: it.innerType || "",
+            outerType: it.outerType || "",
+            fileName: extractedPreview.fileName || "",
+            source: "packinglist",
+            addedAt: new Date().toISOString(),
+          }))
+          .filter((x) => x.description);
+
+        if (pioneerItems.length) {
+          await window.pioneer.supabaseSaveMsdsItems(pioneerItems);
+
+          setSavedMsdsItems((prev) => {
+            const seen = new Set(
+              prev.map(
+                (x) =>
+                  `${String(x.description || "")
+                    .trim()
+                    .toUpperCase()}||${String(x.fileName || "")
+                    .trim()
+                    .toUpperCase()}||${String(x.source || "")
+                    .trim()
+                    .toUpperCase()}`,
+              ),
+            );
+
+            const toAdd = pioneerItems.filter((x) => {
+              const key = `${String(x.description || "")
+                .trim()
+                .toUpperCase()}||${String(x.fileName || "")
+                .trim()
+                .toUpperCase()}||${String(x.source || "")
+                .trim()
+                .toUpperCase()}`;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+
+            return [...toAdd, ...prev];
+          });
+        }
+
         setSavedItems((prev) => [record, ...prev]);
 
         setExtractedPreview(null);
@@ -435,10 +533,16 @@ export default function App() {
       },
 
       // Delete group in Per So Per Pro
-      deletePerSoProGroup: ({ proNumber, soiNumber, destination }) => {
+      deletePerSoProGroup: async ({ proNumber, soiNumber, destination }) => {
         const pro = (proNumber || "").toString().trim() || "—";
         const soi = (soiNumber || "").toString().trim() || "—";
         const dest = (destination || "").toString().trim() || "—";
+
+        await window.pioneer.supabaseDeleteShipmentGroup({
+          proNumber: pro,
+          soiNumber: soi,
+          destination: dest,
+        });
 
         setSavedItems((prev) =>
           prev.filter((rec) => {
@@ -451,7 +555,6 @@ export default function App() {
           }),
         );
 
-        // optional cleanup of saved doc meta for same group
         const key = `${pro}||${soi}||${dest}`;
         setDocMetaByGroup((prev) => {
           const next = { ...prev };
@@ -466,7 +569,7 @@ export default function App() {
         setSelectedFile(null);
       },
     };
-  }, [selectedFile, extractedPreview]);
+  }, [selectedFile, extractedPreview, savedMsdsItems]);
 
   const store = {
     savedItems,

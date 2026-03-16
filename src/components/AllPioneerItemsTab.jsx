@@ -85,13 +85,13 @@ export default function AllPioneerItemsTab({ store, actions }) {
 
   const makeKey = (descClean) => descClean.toLowerCase();
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!actions?.addSavedMsdsRowTop) {
       alert("addSavedMsdsRowTop action is missing in App.jsx.");
       return;
     }
 
-    const newId = actions.addSavedMsdsRowTop();
+    const newId = await actions.addSavedMsdsRowTop();
     if (!newId) return;
 
     const rowKey = newId;
@@ -103,7 +103,6 @@ export default function AllPioneerItemsTab({ store, actions }) {
       description: "",
       descriptionClean: "",
       fileName: "",
-
       hsCode: "",
       dgStatus: "",
       unNumber: "",
@@ -118,7 +117,6 @@ export default function AllPioneerItemsTab({ store, actions }) {
       outerType: "",
     });
   };
-
   const rows = useMemo(() => {
     const out = [];
     const seen = new Set();
@@ -181,7 +179,7 @@ export default function AllPioneerItemsTab({ store, actions }) {
     setDraft(null);
   };
 
-  const deleteRow = (row) => {
+  const deleteRow = async (row) => {
     if (!actions?.deleteSavedMsdsRow) {
       alert("deleteSavedMsdsRow action is missing in App.jsx.");
       return;
@@ -192,7 +190,7 @@ export default function AllPioneerItemsTab({ store, actions }) {
     );
     if (!ok) return;
 
-    actions.deleteSavedMsdsRow({ rowId: row.id });
+    await actions.deleteSavedMsdsRow({ rowId: row.id });
 
     if (editingKey === row.rowKey) {
       setEditingKey(null);

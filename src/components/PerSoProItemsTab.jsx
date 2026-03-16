@@ -98,7 +98,7 @@ export default function PerSoProItemsTab({ store, actions }) {
     return groups.find((g) => g.key === selectedKey) || null;
   }, [groups, selectedKey]);
 
-  const handleDeleteGroup = (g) => {
+  const handleDeleteGroup = async (g) => {
     if (!actions?.deletePerSoProGroup) {
       alert("deletePerSoProGroup action is missing in App.jsx.");
       return;
@@ -109,7 +109,7 @@ export default function PerSoProItemsTab({ store, actions }) {
     );
     if (!ok) return;
 
-    actions.deletePerSoProGroup({
+    await actions.deletePerSoProGroup({
       proNumber: g.proNumber,
       soiNumber: g.soiNumber,
       destination: g.destination,
@@ -150,13 +150,13 @@ export default function PerSoProItemsTab({ store, actions }) {
     setDraft(null);
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!draft || !actions?.updateSavedItemRow) {
       alert("updateSavedItemRow action is missing in App.jsx.");
       return;
     }
 
-    actions.updateSavedItemRow({
+    await actions.updateSavedItemRow({
       recordId: draft.recordId,
       itemIndex: draft.itemIndex,
       patch: {
@@ -165,7 +165,6 @@ export default function PerSoProItemsTab({ store, actions }) {
         noOfBoxes: draft.noOfBoxes,
         netWeight: draft.netWeight,
         grossWeight: draft.grossWeight,
-
         dgStatus: draft.dgStatus,
         unNumber: draft.unNumber,
         classNumber: draft.classNumber,
@@ -184,14 +183,14 @@ export default function PerSoProItemsTab({ store, actions }) {
     setDraft(null);
   };
 
-  const handleAddRow = () => {
+  const handleAddRow = async () => {
     if (!selectedGroup) return;
     if (!actions?.addPerSoProRowTop) {
       alert("addPerSoProRowTop action is missing in App.jsx.");
       return;
     }
 
-    const res = actions.addPerSoProRowTop({
+    const res = await actions.addPerSoProRowTop({
       proNumber: selectedGroup.proNumber,
       soiNumber: selectedGroup.soiNumber,
       destination: selectedGroup.destination,
@@ -205,13 +204,11 @@ export default function PerSoProItemsTab({ store, actions }) {
       recordId: res.recordId,
       itemIndex: res.itemIndex,
       rowKey,
-
       description: "",
       qty: "",
       noOfBoxes: "",
       netWeight: "",
       grossWeight: "",
-
       dgStatus: "Non-DG",
       unNumber: "",
       classNumber: "",
