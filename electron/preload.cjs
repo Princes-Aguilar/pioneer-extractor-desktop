@@ -15,7 +15,6 @@ contextBridge.exposeInMainWorld("pioneer", {
   generateNonDGCert: (payload) =>
     ipcRenderer.invoke("generate-nondg-cert", payload),
 
-  // SUPABASE
   supabaseLoadAll: () => ipcRenderer.invoke("supabase:load-all"),
   supabaseSaveShipmentRecord: (record) =>
     ipcRenderer.invoke("supabase:save-shipment-record", record),
@@ -30,4 +29,7 @@ contextBridge.exposeInMainWorld("pioneer", {
     ipcRenderer.invoke("supabase:update-msds-item", { rowId, patch }),
   supabaseDeleteMsdsItem: ({ rowId }) =>
     ipcRenderer.invoke("supabase:delete-msds-item", { rowId }),
+
+  supabaseSavePackingListItems: (items) =>
+    ipcRenderer.invoke("supabase:save-packing-list-items", items),
 });

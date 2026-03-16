@@ -51,6 +51,20 @@ const supabase = createClient(
   process.env.SUPABASE_KEY,
 );
 
+function toPackingListDb(row) {
+  return {
+    id: row.id,
+    shipment_record_id: row.shipmentRecordId ?? null,
+    description: row.description ?? "",
+    qty: row.qty ?? "",
+    unit: row.unit ?? "",
+    boxes: row.boxes ?? "",
+    net_weight: row.netWeight ?? "",
+    gross_weight: row.grossWeight ?? "",
+    file_name: row.fileName ?? "",
+  };
+}
+
 function toShipmentDb(record) {
   return {
     id: record.id,
@@ -746,6 +760,17 @@ ipcMain.handle("supabase:update-msds-item", async (_e, { rowId, patch }) => {
 
 ipcMain.handle("supabase:delete-msds-item", async (_e, { rowId }) => {
   const { error } = await supabase.from("msds_items").delete().eq("id", rowId);
+
+  if (error) throw error;
+  return { ok: true };
+});
+
+ipcMain.handle("supabase:save-packing-list-items", async (_e, items) => {
+  const payload = (Array.isArray(items) ? items : []).map(toPackingListDb);
+
+  if (!payload.length) return { ok: true };
+
+  const { error } = await supabase.from("packing_list_items").upsert(payload);
 
   if (error) throw error;
   return { ok: true };

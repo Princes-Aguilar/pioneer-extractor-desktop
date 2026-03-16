@@ -458,7 +458,6 @@ export default function App() {
         const record = {
           id: crypto.randomUUID(),
           fileName: extractedPreview.fileName,
-          addedAt: new Date().toISOString(),
           proNumber,
           soiNumber,
           destination,
@@ -469,65 +468,23 @@ export default function App() {
 
         await window.pioneer.supabaseSaveShipmentRecord(record);
 
-        const pioneerItems = normalizedItems
-          .map((it) => ({
-            id: crypto.randomUUID(),
-            description: String(it.description || "").trim(),
-            descriptionClean: String(it.description || "").trim(),
-            hsCode: it.hsCode || "",
-            dgStatus: it.dgStatus || "",
-            unNumber: it.unNumber || "",
-            classNumber: it.classNumber || "",
-            packingGroup: it.packingGroup || "",
-            flashPoint: it.flashPoint || "",
-            properShippingName: it.properShippingName || "",
-            technicalName: it.technicalName || "",
-            ems: it.ems || "",
-            marinePollutant: it.marinePollutant || "",
-            innerType: it.innerType || "",
-            outerType: it.outerType || "",
-            fileName: extractedPreview.fileName || "",
-            source: "packinglist",
-            addedAt: new Date().toISOString(),
-          }))
-          .filter((x) => x.description);
+        const packingListRows = normalizedItems.map((it) => ({
+          id: crypto.randomUUID(),
+          shipmentRecordId: record.id,
+          description: it.description || "",
+          qty: it.qty || "",
+          unit: it.unit || "",
+          boxes: it.noOfBoxes || it.boxes || "",
+          netWeight: it.netWeight || "",
+          grossWeight: it.grossWeight || "",
+          fileName: it.fileName || extractedPreview.fileName || "",
+        }));
 
-        if (pioneerItems.length) {
-          await window.pioneer.supabaseSaveMsdsItems(pioneerItems);
-
-          setSavedMsdsItems((prev) => {
-            const seen = new Set(
-              prev.map(
-                (x) =>
-                  `${String(x.description || "")
-                    .trim()
-                    .toUpperCase()}||${String(x.fileName || "")
-                    .trim()
-                    .toUpperCase()}||${String(x.source || "")
-                    .trim()
-                    .toUpperCase()}`,
-              ),
-            );
-
-            const toAdd = pioneerItems.filter((x) => {
-              const key = `${String(x.description || "")
-                .trim()
-                .toUpperCase()}||${String(x.fileName || "")
-                .trim()
-                .toUpperCase()}||${String(x.source || "")
-                .trim()
-                .toUpperCase()}`;
-              if (seen.has(key)) return false;
-              seen.add(key);
-              return true;
-            });
-
-            return [...toAdd, ...prev];
-          });
+        if (packingListRows.length) {
+          await window.pioneer.supabaseSavePackingListItems(packingListRows);
         }
 
         setSavedItems((prev) => [record, ...prev]);
-
         setExtractedPreview(null);
         setSelectedFile(null);
       },
