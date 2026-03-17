@@ -487,6 +487,9 @@ export default function App() {
         setSavedItems((prev) => [record, ...prev]);
         setExtractedPreview(null);
         setSelectedFile(null);
+        setProNumber("");
+        setSoiNumber("");
+        setDestination("");
       },
 
       // Delete group in Per So Per Pro
