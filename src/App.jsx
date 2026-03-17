@@ -548,6 +548,44 @@ export default function App() {
       )}
     </div>
   );
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.innerHTML = `
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: #4b4b4b #111111;
+    }
+
+    *::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    *::-webkit-scrollbar-track {
+      background: #111111;
+      border-radius: 10px;
+    }
+
+    *::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, #2f2f2f, #5a5a5a);
+      border-radius: 10px;
+      border: 2px solid #111111;
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(180deg, #4a4a4a, #6a6a6a);
+    }
+
+    *::-webkit-scrollbar-corner {
+      background: #111111;
+    }
+  `;
+    document.head.appendChild(style);
+
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
 }
 
 const styles = {

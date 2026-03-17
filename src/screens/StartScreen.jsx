@@ -5,9 +5,7 @@ export default function StartScreen({ onStart }) {
     <div style={styles.wrap}>
       <div style={styles.card}>
         <h1 style={styles.title}>Start Extracting</h1>
-        <p style={styles.sub}>
-          Desktop skeleton app — extraction features will be added later.
-        </p>
+        <p style={styles.sub}>Pioneer Desktop App</p>
 
         <button style={styles.primaryBtn} onClick={onStart}>
           Start

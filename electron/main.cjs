@@ -7,6 +7,14 @@ const { spawn } = require("child_process");
 const pdfParse = require("pdf-parse");
 console.log("pdfParse type:", typeof pdfParse);
 
+require("dotenv").config();
+const { createClient } = require("@supabase/supabase-js");
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY,
+);
+
 let mainWindow;
 
 function createWindow() {
@@ -14,12 +22,16 @@ function createWindow() {
     width: 1100,
     height: 700,
     backgroundColor: "#0b0b0b",
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
+
+  mainWindow.setMenuBarVisibility(false);
+  mainWindow.removeMenu();
 
   const devUrl = process.env.VITE_DEV_SERVER_URL || "http://localhost:5173";
   const indexPath = path.join(__dirname, "..", "dist", "index.html");
@@ -42,14 +54,6 @@ app.whenReady().then(() => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
-
-require("dotenv").config();
-const { createClient } = require("@supabase/supabase-js");
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY,
-);
 
 function toPackingListDb(row) {
   return {
