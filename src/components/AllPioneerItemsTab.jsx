@@ -57,8 +57,6 @@ export default function AllPioneerItemsTab({ store, actions }) {
       "TAN",
       "BRONZE",
       "COPPER",
-      "PEARL",
-      "CLEAR",
       "TRANSPARENT",
       "ULTRAMARINE",
       "SCARLET",
