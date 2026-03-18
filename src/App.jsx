@@ -2,6 +2,103 @@ import React, { useEffect, useMemo, useState } from "react";
 import StartScreen from "./screens/StartScreen.jsx";
 import MenuScreen from "./screens/MenuScreen.jsx";
 
+function normalizeWords(text = "") {
+  const STOP_WORDS = new Set([
+    "THE",
+    "AND",
+    "WITH",
+    "FOR",
+    "PC",
+    "PCS",
+    "SET",
+    "SETS",
+    "KIT",
+    "KG",
+    "KGS",
+    "G",
+    "GRAM",
+    "GRAMS",
+    "L",
+    "LTR",
+    "LITER",
+    "LITERS",
+    "ML",
+    "BOX",
+    "BOXES",
+    "BAG",
+    "BAGS",
+    "PAIL",
+    "TIN",
+    "DRUM",
+    "PART",
+    "TYPE",
+    "COLOR",
+    "COLOUR",
+  ]);
+
+  return String(text)
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s]/g, " ")
+    .split(/\s+/)
+    .map((w) => w.trim())
+    .filter((w) => w && !STOP_WORDS.has(w));
+}
+
+function getSharedWords(a = "", b = "") {
+  const aWords = [...new Set(normalizeWords(a))];
+  const bWords = new Set(normalizeWords(b));
+  return aWords.filter((w) => bWords.has(w));
+}
+
+function findBestMsdsMatch(packingDesc, msdsItems = []) {
+  if (!packingDesc || !Array.isArray(msdsItems) || !msdsItems.length)
+    return null;
+
+  const WEAK_SINGLE_WORDS = new Set([
+    "BOND",
+    "EPOXY",
+    "PAINT",
+    "ADHESIVE",
+    "SEALANT",
+    "POUCH",
+    "TUBE",
+    "PART",
+    "TYPE",
+  ]);
+
+  const scored = msdsItems.map((msds) => {
+    const msdsDesc = msds.descriptionClean || msds.description || "";
+    const shared = getSharedWords(packingDesc, msdsDesc);
+
+    return {
+      msds,
+      shared,
+      score: shared.length,
+    };
+  });
+
+  const twoWordMatches = scored
+    .filter((x) => x.score >= 2)
+    .sort((a, b) => b.score - a.score);
+
+  if (twoWordMatches.length > 0) {
+    return twoWordMatches[0].msds;
+  }
+
+  const oneWordMatches = scored
+    .filter(
+      (x) =>
+        x.score === 1 && x.shared[0] && !WEAK_SINGLE_WORDS.has(x.shared[0]),
+    )
+    .sort((a, b) => b.score - a.score);
+
+  if (oneWordMatches.length > 0) {
+    return oneWordMatches[0].msds;
+  }
+
+  return null;
+}
+
 export default function App() {
   const [screen, setScreen] = useState("start");
 
@@ -446,18 +543,39 @@ export default function App() {
           .toString()
           .trim();
 
-        const normalizedItems = (extractedPreview.items || []).map((it) => ({
-          ...defaultDGFields,
-          ...it,
-          fileName: it.fileName ?? extractedPreview.fileName ?? "",
-          proNumber: (it.proNumber ?? proNumber) || "",
-          soiNumber: (it.soiNumber ?? soiNumber) || "",
-          destination: (it.destination ?? destination) || "",
-        }));
+        const normalizedItems = (extractedPreview.items || []).map((it) => {
+          const matched = findBestMsdsMatch(
+            it.description || "",
+            savedMsdsItems,
+          );
+
+          return {
+            ...defaultDGFields,
+            ...it,
+            fileName: it.fileName ?? extractedPreview.fileName ?? "",
+            proNumber: (it.proNumber ?? proNumber) || "",
+            soiNumber: (it.soiNumber ?? soiNumber) || "",
+            destination: (it.destination ?? destination) || "",
+
+            hsCode: matched?.hsCode || "",
+            dgStatus: matched?.dgStatus || "",
+            unNumber: matched?.unNumber || "",
+            classNumber: matched?.classNumber || "",
+            packingGroup: matched?.packingGroup || "",
+            flashPoint: matched?.flashPoint || "",
+            properShippingName: matched?.properShippingName || "",
+            technicalName: matched?.technicalName || "",
+            ems: matched?.ems || "",
+            marinePollutant: matched?.marinePollutant || "",
+            innerType: matched?.innerType || "",
+            outerType: matched?.outerType || "",
+          };
+        });
 
         const record = {
           id: crypto.randomUUID(),
           fileName: extractedPreview.fileName,
+          addedAt: new Date().toISOString(),
           proNumber,
           soiNumber,
           destination,
@@ -485,6 +603,7 @@ export default function App() {
         }
 
         setSavedItems((prev) => [record, ...prev]);
+
         setExtractedPreview(null);
         setSelectedFile(null);
         setProNumber("");
@@ -548,44 +667,6 @@ export default function App() {
       )}
     </div>
   );
-  useEffect(() => {
-    const style = document.createElement("style");
-    style.innerHTML = `
-    * {
-      scrollbar-width: thin;
-      scrollbar-color: #4b4b4b #111111;
-    }
-
-    *::-webkit-scrollbar {
-      width: 10px;
-      height: 10px;
-    }
-
-    *::-webkit-scrollbar-track {
-      background: #111111;
-      border-radius: 10px;
-    }
-
-    *::-webkit-scrollbar-thumb {
-      background: linear-gradient(180deg, #2f2f2f, #5a5a5a);
-      border-radius: 10px;
-      border: 2px solid #111111;
-    }
-
-    *::-webkit-scrollbar-thumb:hover {
-      background: linear-gradient(180deg, #4a4a4a, #6a6a6a);
-    }
-
-    *::-webkit-scrollbar-corner {
-      background: #111111;
-    }
-  `;
-    document.head.appendChild(style);
-
-    return () => {
-      document.head.removeChild(style);
-    };
-  }, []);
 }
 
 const styles = {
